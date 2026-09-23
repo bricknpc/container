@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Dirthara\Container\Exception;
 
-use RuntimeException;
+use Exception;
 use PHPUnit\Event\Code\Throwable;
-use Psr\Container\NotFoundExceptionInterface;
+use Psr\Container\ContainerExceptionInterface;
 
-final class EntryNotFoundException extends RuntimeException implements ContainerException, NotFoundExceptionInterface
+class CircularDependencyException extends Exception implements ContainerExceptionInterface
 {
     public protected(set) array $context {
         get {
@@ -33,10 +33,11 @@ final class EntryNotFoundException extends RuntimeException implements Container
         return $this;
     }
 
-    public static function forId(string $id): self
+    public static function forEntry(string $id, array $resolving = []): self
     {
-        return new self(message: sprintf('Entry "%s" not found', $id), context: [
+        return new static(message: sprintf('Circular dependency detected for entry "%s"', $id), context: [
             'id' => $id,
+            'resolving' => $resolving,
         ]);
     }
 }
