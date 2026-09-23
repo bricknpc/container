@@ -26,7 +26,7 @@ final class CircularDependencyException extends RuntimeException implements Cont
     }
 
     /**
-     * @param list<string> $chain The entries being resolved, from the first requested to the one that repeats.
+     * @param list<string> $chain
      */
     public static function forEntry(string $id, array $chain): self
     {

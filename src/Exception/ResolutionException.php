@@ -60,15 +60,39 @@ final class ResolutionException extends RuntimeException implements ContainerExc
         );
     }
 
-    /**
-     * The message names the class of the failure but not its message, which can hold anything the factory saw.
-     */
     public static function factoryFailed(string $id, Throwable $previous): self
     {
         return new self(
             message: sprintf('The factory for entry "%s" failed with %s.', self::printable($id), $previous::class),
             previous: $previous,
             context: ['id' => $id, 'exceptionClass' => $previous::class],
+        );
+    }
+
+    public static function unresolvableContextualBinding(string $class, string $need, string $concrete): self
+    {
+        return new self(
+            message: sprintf(
+                'The contextual binding of "%s" for "%s" gives "%s", which is neither a known entry nor an instantiable class.',
+                self::printable($need),
+                self::printable($class),
+                self::printable($concrete),
+            ),
+            context: ['class' => $class, 'need' => $need, 'concrete' => $concrete],
+        );
+    }
+
+    public static function contextualFactoryFailed(string $class, string $need, Throwable $previous): self
+    {
+        return new self(
+            message: sprintf(
+                'The contextual factory of "%s" for "%s" failed with %s.',
+                self::printable($need),
+                self::printable($class),
+                $previous::class,
+            ),
+            previous: $previous,
+            context: ['class' => $class, 'need' => $need, 'exceptionClass' => $previous::class],
         );
     }
 }

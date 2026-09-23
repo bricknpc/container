@@ -35,6 +35,7 @@ use Dirthara\Container\Exception\EntryNotFoundException;
 use Dirthara\Container\Tests\Fixtures\InheritsSelfTyped;
 use Dirthara\Container\Tests\Fixtures\ServiceImplementation;
 use Dirthara\Container\Exception\CircularDependencyException;
+use Dirthara\Container\Exception\InvalidContextualBindingException;
 
 final class ContainerTest extends TestCase
 {
@@ -391,7 +392,6 @@ final class ContainerTest extends TestCase
             );
         }
 
-        // The failed resolution leaves nothing behind that makes an unrelated entry look circular.
         self::assertInstanceOf(Plain::class, $container->get(Plain::class));
     }
 
@@ -489,9 +489,23 @@ final class ContainerTest extends TestCase
             self::assertSame(['id' => 'service', 'exceptionClass' => RuntimeException::class], $exception->context);
         }
 
-        // Had the failure left the entry marked as resolving, this would report a circular dependency.
         $container->bind('service', static fn(): string => 'second');
 
         self::assertSame('second', $container->get('service'));
+    }
+
+    #[Test]
+    public function it_refuses_to_bind_for_something_that_is_not_a_class(): void
+    {
+        try {
+            new Container()->when([Plain::class, Service::class]);
+            self::fail('Expected an InvalidContextualBindingException.');
+        } catch (InvalidContextualBindingException $exception) {
+            self::assertSame(
+                'Unable to add a contextual binding for "' . Service::class . '": it is not an existing class.',
+                $exception->getMessage(),
+            );
+            self::assertSame(['class' => Service::class], $exception->context);
+        }
     }
 }

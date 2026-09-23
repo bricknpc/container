@@ -29,6 +29,9 @@ $mailer = $container->get(Mailer::class);
 `Mailer` is not registered, so the container autowires it: it reads the constructor, resolves a `LoggerInterface`
 argument to a new `FileLogger`, and builds the `Mailer`.
 
+[Contextual bindings](contextual-bindings.md) change what one class receives without changing it for the rest:
+`$container->when(Mailer::class)->needs(LoggerInterface::class)->give(MailLogger::class)`.
+
 Start with [installation](installation.md) and the [getting started guide](getting-started.md), then read how
 [autowiring](autowiring.md) fills in constructor parameters and how the container reports
 [errors](error-handling.md).

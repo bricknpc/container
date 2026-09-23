@@ -8,7 +8,9 @@ description: The exception interface, the exception classes, what get() throws w
 ## Catching exceptions
 
 Every exception the package throws implements `Dirthara\Container\Exception\ContainerException`, which extends the
-PSR-11 `ContainerExceptionInterface`, so one `catch` covers them all. Each also extends `RuntimeException`.
+PSR-11 `ContainerExceptionInterface`, so one `catch` covers them all. Each also extends the SPL exception that
+describes the failure: an invalid registration throws an `InvalidArgumentException`, and a failure to resolve an entry
+throws a `RuntimeException`.
 
 ```php
 use Dirthara\Container\Exception\ContainerException;
@@ -23,11 +25,12 @@ try {
 }
 ```
 
-| Exception | Also implements | Thrown when |
-| --- | --- | --- |
-| `EntryNotFoundException` | `NotFoundExceptionInterface` | The requested identifier is not registered and is not an instantiable class. |
-| `ResolutionException` | | The entry exists but cannot be built: a binding points at nothing, a parameter cannot be filled in, or a factory failed. |
-| `CircularDependencyException` | | Resolving the entry requires the entry itself. |
+| Exception | Extends | Also implements | Thrown when |
+| --- | --- | --- | --- |
+| `EntryNotFoundException` | `RuntimeException` | `NotFoundExceptionInterface` | The requested identifier is not registered and is not an instantiable class. |
+| `ResolutionException` | `RuntimeException` | | The entry exists but cannot be built: a binding points at nothing, a parameter cannot be filled in, or a factory failed. |
+| `CircularDependencyException` | `RuntimeException` | | Resolving the entry requires the entry itself. |
+| `InvalidContextualBindingException` | `InvalidArgumentException` | | `when()` names something that is not a class, or `needs()` something that is neither a class or interface nor a parameter name. |
 
 All exception classes are `final`; catch them by class or by `ContainerException`.
 
@@ -44,11 +47,14 @@ catches `NotFoundExceptionInterface` to fall back to a default never mistakes a 
 | `get(Mailer::class)` when `Mailer` needs an `int` without a default | `ResolutionException::unresolvableParameter()` |
 | `get(Mailer::class)` after `bind(Mailer::class, 'missing')` | `ResolutionException::unresolvableBinding()` |
 | `get(Mailer::class)` when its factory calls `get('missing')` | `ResolutionException::factoryFailed()`, wrapping the `EntryNotFoundException` |
+| `get(Mailer::class)` when a contextual binding for it gives `'missing'` | `ResolutionException::unresolvableContextualBinding()` |
+| `get(Mailer::class)` when a contextual factory for it throws | `ResolutionException::contextualFactoryFailed()`, wrapping what it threw |
 
 ## Factories that throw
 
-When a factory registered with `bind()` or `singleton()` throws, the container wraps the exception in a
-`ResolutionException` and passes the original as its previous exception, with three exceptions to that rule:
+When a factory registered with `bind()`, `singleton()`, or a contextual binding's `give()` throws, the container wraps
+the exception in a `ResolutionException` and passes the original as its previous exception, with three exceptions to
+that rule:
 
 - This package's own exceptions pass through unchanged, so a `CircularDependencyException` from inside a factory keeps
   its type. The one case that is wrapped is an `EntryNotFoundException`, which would otherwise claim that the factory's
@@ -81,6 +87,10 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `ResolutionException::unresolvableParameter()` | `class`, `parameter` |
 | `ResolutionException::unresolvableBinding()` | `id`, `concrete` |
 | `ResolutionException::factoryFailed()` | `id`, and `exceptionClass`: the class of the exception the factory threw |
+| `ResolutionException::unresolvableContextualBinding()` | `class`, `need`, `concrete` |
+| `ResolutionException::contextualFactoryFailed()` | `class`, `need`, and `exceptionClass` |
+| `InvalidContextualBindingException::notAClass()` | `class` |
+| `InvalidContextualBindingException::invalidNeed()` | `need` |
 
 Code that catches an exception and knows more can add to it with `addContext()`, which merges the given array into the
 context, replacing matching keys, and returns the exception:

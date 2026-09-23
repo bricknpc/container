@@ -15,7 +15,9 @@ use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
 use Dirthara\Container\Exception\EntryNotFoundException;
 use Dirthara\Container\Exception\CircularDependencyException;
+use Dirthara\Container\Exception\InvalidContextualBindingException;
 
+use function is_string;
 use function array_keys;
 use function class_exists;
 use function array_key_exists;
@@ -33,8 +35,11 @@ final class Container implements ContainerInterface
     private array $instances = [];
 
     /**
-     * The entries being resolved right now, in the order they were requested.
-     *
+     * @var array<class-string, array<string, ContextualBinding>>
+     */
+    private array $contextualBindings = [];
+
+    /**
      * @var array<string, true>
      */
     private array $resolving = [];
@@ -46,8 +51,7 @@ final class Container implements ContainerInterface
     }
 
     /**
-     * @param string|Closure(ContainerInterface): mixed|null $concrete A class or another entry to resolve instead, or a
-     *     factory; null resolves the abstract as a class.
+     * @param string|Closure(ContainerInterface): mixed|null $concrete
      */
     public function bind(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -59,8 +63,7 @@ final class Container implements ContainerInterface
     }
 
     /**
-     * @param string|Closure(ContainerInterface): mixed|null $concrete A class or another entry to resolve instead, or a
-     *     factory; null resolves the abstract as a class.
+     * @param string|Closure(ContainerInterface): mixed|null $concrete
      */
     public function singleton(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -81,15 +84,33 @@ final class Container implements ContainerInterface
     }
 
     /**
+     * @param class-string|list<class-string> $classes
+     *
+     * @throws InvalidContextualBindingException
+     */
+    public function when(string|array $classes): ContextualBindingBuilder
+    {
+        $classes = is_string($classes) ? [$classes] : $classes;
+
+        foreach ($classes as $class) {
+            if (!class_exists($class)) {
+                throw InvalidContextualBindingException::notAClass($class);
+            }
+        }
+
+        return new ContextualBindingBuilder($this, $classes, $this->addContextualBinding(...));
+    }
+
+    /**
      * @template T of object
      *
      * @param class-string<T>|string $id
      *
      * @return ($id is class-string<T> ? T : mixed)
      *
-     * @throws EntryNotFoundException When the container has no entry for the identifier.
-     * @throws CircularDependencyException When resolving the entry requires the entry itself.
-     * @throws ResolutionException When the entry exists but cannot be built.
+     * @throws EntryNotFoundException
+     * @throws CircularDependencyException
+     * @throws ResolutionException
      */
     public function get(string $id): mixed
     {
@@ -153,7 +174,10 @@ final class Container implements ContainerInterface
         $concrete = $binding->concrete;
 
         if ($concrete instanceof Closure) {
-            return $this->callFactory($id, $concrete);
+            return $this->callFactory($concrete, static fn(Exception $exception): ResolutionException => ResolutionException::factoryFailed(
+                $id,
+                $exception,
+            ));
         }
 
         if ($concrete === $id) {
@@ -170,24 +194,31 @@ final class Container implements ContainerInterface
     }
 
     /**
-     * Wraps what a factory throws, except this package's own exceptions, which pass through so their type survives,
-     * and a LogicException, which is a bug in the factory rather than a failure to resolve.
-     *
      * @param Closure(ContainerInterface): mixed $factory
+     * @param Closure(Exception): ResolutionException $wrap
      *
      * @throws ResolutionException
      */
-    private function callFactory(string $id, Closure $factory): mixed
+    private function callFactory(Closure $factory, Closure $wrap): mixed
     {
         try {
             return $factory($this);
         } catch (EntryNotFoundException $exception) {
-            // The missing entry is a dependency of this one, so rethrowing it would claim that this entry is missing.
-            throw ResolutionException::factoryFailed($id, $exception);
+            throw $wrap($exception);
         } catch (ContainerException|LogicException $exception) {
             throw $exception;
         } catch (Exception $exception) {
-            throw ResolutionException::factoryFailed($id, $exception);
+            throw $wrap($exception);
+        }
+    }
+
+    /**
+     * @param list<class-string> $classes
+     */
+    private function addContextualBinding(array $classes, ContextualBinding $binding): void
+    {
+        foreach ($classes as $class) {
+            $this->contextualBindings[$class][$binding->need] = $binding;
         }
     }
 
@@ -213,9 +244,6 @@ final class Container implements ContainerInterface
     }
 
     /**
-     * Resolves a class-typed parameter from the container when the container has an entry for it, and otherwise
-     * falls back to the default value, then to null.
-     *
      * @param class-string $class
      *
      * @throws CircularDependencyException
@@ -224,6 +252,11 @@ final class Container implements ContainerInterface
     private function resolveParameter(string $class, ReflectionParameter $parameter): mixed
     {
         $dependency = $this->dependencyOf($parameter);
+        $contextual = $this->contextualBindingFor($class, $parameter->getName(), $dependency);
+
+        if ($contextual !== null) {
+            return $this->resolveContextualBinding($class, $contextual);
+        }
 
         if ($dependency !== null && $this->has($dependency)) {
             return $this->get($dependency);
@@ -243,9 +276,42 @@ final class Container implements ContainerInterface
     }
 
     /**
-     * The class a parameter is typed with, or null when it has no single class type. Reflection reports self and
-     * parent as the classes they name, relative to the class that declares the constructor.
+     * @param class-string $class
      */
+    private function contextualBindingFor(string $class, string $parameter, ?string $dependency): ?ContextualBinding
+    {
+        $bindings = $this->contextualBindings[$class] ?? [];
+
+        return $bindings['$' . $parameter] ?? ($dependency === null ? null : $bindings[$dependency] ?? null);
+    }
+
+    /**
+     * @param class-string $class
+     *
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     */
+    private function resolveContextualBinding(string $class, ContextualBinding $binding): mixed
+    {
+        $concrete = $binding->concrete;
+
+        if ($concrete === null) {
+            return $binding->value;
+        }
+
+        if ($concrete instanceof Closure) {
+            return $this->callFactory($concrete, static fn(Exception $exception): ResolutionException => ResolutionException::contextualFactoryFailed(
+                $class,
+                $binding->need,
+                $exception,
+            ));
+        }
+
+        return $this->has($concrete)
+            ? $this->get($concrete)
+            : throw ResolutionException::unresolvableContextualBinding($class, $binding->need, $concrete);
+    }
+
     private function dependencyOf(ReflectionParameter $parameter): ?string
     {
         $type = $parameter->getType();

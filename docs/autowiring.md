@@ -17,11 +17,13 @@ An autowired class is built again on every `get()`, unless it is registered with
 
 The container reads the constructor and resolves each parameter in turn, using the first rule that applies:
 
-1. The parameter has a class or interface type, and the container has an entry for it: that entry, resolved with
+1. A [contextual binding](contextual-bindings.md) for the class being built names the parameter, or its class or
+   interface type: what that binding gives.
+2. The parameter has a class or interface type, and the container has an entry for it: that entry, resolved with
    `get()`.
-2. The parameter has a default value: the default.
-3. The parameter accepts `null`: `null`.
-4. Otherwise, resolution fails with a `ResolutionException`.
+3. The parameter has a default value: the default.
+4. The parameter accepts `null`: `null`.
+5. Otherwise, resolution fails with a `ResolutionException`.
 
 A variadic parameter is left empty.
 
@@ -41,12 +43,12 @@ $container->bind(LoggerInterface::class, FileLogger::class);
 $mailer = $container->get(Mailer::class);
 ```
 
-`$logger` is a new `FileLogger` (rule 1). `$clock` is `null`, because nothing is registered for `Clock` and it is an
-interface that cannot be autowired (rule 2). `$retries` is `3` (rule 2).
+`$logger` is a new `FileLogger` (rule 2). `$clock` is `null`, because nothing is registered for `Clock` and it is an
+interface that cannot be autowired (rule 3). `$retries` is `3` (rule 3).
 
 A parameter with a union or intersection type, or with a built-in type such as `int` or `string`, never comes from the
-container. It gets its default or `null`, and resolution fails when it has neither. To build a class with such a
-parameter, bind it to a factory:
+container. It gets its default or `null`, and resolution fails when it has neither. To fill such a parameter in, give it
+a value with a [contextual binding](contextual-bindings.md) for its name, or bind the class to a factory:
 
 ```php
 $container->bind(Mailer::class, static fn(ContainerInterface $container): Mailer => new Mailer(

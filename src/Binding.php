@@ -8,7 +8,7 @@ use Closure;
 use Psr\Container\ContainerInterface;
 
 /**
- * @internal How the container stores a binding; register one with Container::bind() or Container::singleton().
+ * @internal
  */
 final readonly class Binding
 {
