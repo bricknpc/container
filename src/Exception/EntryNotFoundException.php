@@ -4,17 +4,15 @@ declare(strict_types=1);
 
 namespace Dirthara\Container\Exception;
 
+use Throwable;
 use RuntimeException;
-use PHPUnit\Event\Code\Throwable;
 use Psr\Container\NotFoundExceptionInterface;
+
+use function sprintf;
 
 final class EntryNotFoundException extends RuntimeException implements ContainerException, NotFoundExceptionInterface
 {
-    public protected(set) array $context {
-        get {
-            return $this->context;
-        }
-    }
+    use HasExceptionContext;
 
     /**
      * @param array<string, mixed> $context
@@ -26,17 +24,14 @@ final class EntryNotFoundException extends RuntimeException implements Container
         $this->context = $context;
     }
 
-    public function addContext(array $context): static
-    {
-        $this->context = array_merge($this->context, $context);
-
-        return $this;
-    }
-
     public static function forId(string $id): self
     {
-        return new self(message: sprintf('Entry "%s" not found', $id), context: [
-            'id' => $id,
-        ]);
+        return new self(
+            message: sprintf(
+                'No entry "%s" was found: it is not bound, not registered as an instance, and not an instantiable class.',
+                self::printable($id),
+            ),
+            context: ['id' => $id],
+        );
     }
 }

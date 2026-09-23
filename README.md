@@ -4,8 +4,10 @@
 
 # Dirthara Container
 
-Dependency injection container for the Dirthara framework. This repository is the initial package scaffold; no public API or release is available yet. Usage 
-documentation lives in [`docs`](docs/intro.md) and is published on the Dirthara documentation site at 
+A PSR-11 dependency injection container with autowiring for the Dirthara framework.
+
+Usage guides and API documentation live in [`docs`](docs/intro.md), starting with
+[getting started](docs/getting-started.md). They are published on the Dirthara documentation site at
 <https://dirthara.github.io/docs/>, which documents every package in the framework.
 
 ## Installation
@@ -46,11 +48,7 @@ docker compose down
 docker compose exec php composer test
 ```
 
-Tests belong in `tests`, under `Dirthara\Container\Tests`. Source belongs in`src`, under `Dirthara\Container`.
-
-The initial scaffold has no PHP source or tests. Test and coverage commands explicitly report that checks are not 
-applicable while both directories contain no PHP files. As soon as either contains PHP files, PHPUnit and the coverage
-gate run normally; an empty test suite fails.
+Tests belong in `tests`, under `Dirthara\Container\Tests`. Source belongs in `src`, under `Dirthara\Container`.
 
 ## Code quality
 
