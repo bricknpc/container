@@ -45,4 +45,15 @@ final class InvalidAttributeException extends InvalidArgumentException implement
             context: ['class' => $class],
         );
     }
+
+    public static function unknownClass(string $class): self
+    {
+        return new self(
+            message: sprintf(
+                'Unable to read the attributes of "%s": it is not an existing class or interface.',
+                self::printable($class),
+            ),
+            context: ['class' => $class],
+        );
+    }
 }

@@ -27,9 +27,10 @@ The container implements one interface for each part of its work:
 | Interface | Methods | Use it for |
 | --- | --- | --- |
 | `Psr\Container\ContainerInterface` | `get()`, `has()` | Resolving entries. |
-| `Dirthara\Container\Contract\ContainerConfigurator` | `bind()`, `singleton()`, `scoped()`, `instance()`, `when()` | Registering entries and [contextual bindings](contextual-bindings.md). |
+| `Dirthara\Container\Contract\ContainerConfigurator` | `bind()`, `singleton()`, `scoped()`, `instance()`, `when()`, `tag()`, `tagByAttribute()` | Registering entries, [contextual bindings](contextual-bindings.md), and [tags](tags.md). |
 | `Dirthara\Container\Contract\InstanceFactory` | `make()` | [Building a new instance](making-and-calling.md#make-a-new-instance) with some constructor parameters given. |
 | `Dirthara\Container\Contract\Invoker` | `call()` | [Calling a method or a closure](making-and-calling.md#call-a-method-or-a-closure) with its parameters filled in. |
+| `Dirthara\Container\Contract\TagResolver` | `tagged()` | Resolving every entry with a [tag](tags.md). |
 | `Dirthara\Container\Contract\Scope` | `scopedInstance()`, `resetScope()` | Providing per-request values and [ending a scope](#scope-an-entry). |
 
 Type against the interface that matches what the code does, rather than against `Container`:
@@ -181,8 +182,8 @@ when it is needed.
 ## Lock the container
 
 Once an application has registered everything it needs, `lock()` stops the container from accepting more. After it,
-`bind()`, `singleton()`, `scoped()`, `instance()`, and `when()` throw a `ContainerLockedException`, and so do `give()`
-and `giveValue()` on a contextual binding that was started before the lock.
+every method of `ContainerConfigurator` throws a `ContainerLockedException`, and so do `give()` and `giveValue()` on a
+contextual binding that was started before the lock.
 
 ```php
 $container->singleton(Connection::class, PdoConnection::class);

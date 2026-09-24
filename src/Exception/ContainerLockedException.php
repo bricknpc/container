@@ -49,4 +49,15 @@ final class ContainerLockedException extends RuntimeException implements Contain
             context: ['classes' => $classes],
         );
     }
+
+    public static function cannotConfigure(string $method): self
+    {
+        return new self(
+            message: sprintf(
+                'Unable to call %s(): the container is locked and accepts no new registrations.',
+                self::printable($method),
+            ),
+            context: ['method' => $method],
+        );
+    }
 }

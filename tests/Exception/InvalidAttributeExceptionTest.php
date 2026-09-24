@@ -71,4 +71,16 @@ final class InvalidAttributeExceptionTest extends TestCase
         );
         self::assertSame(['class' => 'Service'], $exception->context);
     }
+
+    #[Test]
+    public function it_describes_an_unknown_class_whose_attributes_are_read(): void
+    {
+        $exception = InvalidAttributeException::unknownClass('Missing');
+
+        self::assertSame(
+            'Unable to read the attributes of "Missing": it is not an existing class or interface.',
+            $exception->getMessage(),
+        );
+        self::assertSame(['class' => 'Missing'], $exception->context);
+    }
 }

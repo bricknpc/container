@@ -1,7 +1,7 @@
 ---
 id: error-handling
 title: Error handling
-sidebar_position: 10
+sidebar_position: 20
 description: The exception interface, the exception classes, what get() throws when, diagnostic context, and logging.
 ---
 
@@ -30,7 +30,7 @@ try {
 | `EntryNotFoundException` | `RuntimeException` | `NotFoundExceptionInterface` | The requested identifier is not registered and is not an instantiable class. |
 | `ResolutionException` | `RuntimeException` | | The entry exists but cannot be built: a binding points at nothing, a parameter cannot be filled in, or a factory failed. |
 | `CircularDependencyException` | `RuntimeException` | | Resolving the entry requires the entry itself. |
-| `ContainerLockedException` | `RuntimeException` | | A registration method is called after [`lock()`](getting-started.md#lock-the-container). |
+| `ContainerLockedException` | `RuntimeException` | | A method of `ContainerConfigurator` is called after [`lock()`](getting-started.md#lock-the-container). |
 | `InvalidContextualBindingException` | `InvalidArgumentException` | | `when()` names something that is not a class, or `needs()` something that is neither a class or interface nor a parameter name. |
 | `InvalidAttributeException` | `InvalidArgumentException` | | An [attribute](attributes.md) on the type being resolved is used incorrectly. |
 | `InvalidCallableException` | `InvalidArgumentException` | | `call()` is given something that is not a closure, a function, a public method, or an invokable class. |
@@ -99,8 +99,10 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `InvalidCallableException::notCallable()` | `callable` |
 | `InvalidAttributeException::notASubtype()` | `class`, and `concrete`: the class its `#[BoundTo]` names |
 | `InvalidAttributeException::conflictingLifetimes()` | `class` |
+| `InvalidAttributeException::unknownClass()` | `class` |
 | `ContainerLockedException::cannotRegister()` | `id` |
 | `ContainerLockedException::cannotAddContextualBinding()` | `classes`: the classes given to `when()` |
+| `ContainerLockedException::cannotConfigure()` | `method`: the method that was called, such as `tag` |
 
 A `target` is what the parameters belong to: a class for a constructor, `Class::method` for a method, `Closure` for a
 closure, or the name of a function.

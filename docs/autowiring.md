@@ -22,14 +22,15 @@ The container reads the constructor and resolves each parameter in turn, using t
    class being made, not to its dependencies.
 2. A [contextual binding](contextual-bindings.md) for the class being built names the parameter, or its class or
    interface type: what that binding gives.
-3. The parameter has an [`#[Inject]`](attributes.md#inject-a-named-entry) attribute, and the container has the entry it
+3. The parameter has a [`#[Tagged]`](tags.md#inject-a-tag) attribute: every entry with that tag.
+4. The parameter has an [`#[Inject]`](attributes.md#inject-a-named-entry) attribute, and the container has the entry it
    names: that entry, resolved with `get()`. The parameter's type is not looked up, so when the entry is missing, the
-   parameter continues with rule 5.
-4. The parameter has a class or interface type, and the container has an entry for it: that entry, resolved with
+   parameter continues with rule 6.
+5. The parameter has a class or interface type, and the container has an entry for it: that entry, resolved with
    `get()`.
-5. The parameter has a default value: the default.
-6. The parameter accepts `null`: `null`.
-7. Otherwise, resolution fails with a `ResolutionException`.
+6. The parameter has a default value: the default.
+7. The parameter accepts `null`: `null`.
+8. Otherwise, resolution fails with a `ResolutionException`.
 
 A variadic parameter is left empty, unless a value for it is given to `make()`.
 

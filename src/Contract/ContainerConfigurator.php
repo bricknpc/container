@@ -7,6 +7,7 @@ namespace Dirthara\Container\Contract;
 use Closure;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Exception\ContainerLockedException;
+use Dirthara\Container\Exception\InvalidAttributeException;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
 interface ContainerConfigurator
@@ -36,6 +37,19 @@ interface ContainerConfigurator
      * @throws ContainerLockedException
      */
     public function instance(string $abstract, mixed $instance): self;
+
+    /**
+     * @param string|list<string> $abstracts
+     *
+     * @throws ContainerLockedException
+     */
+    public function tag(string|array $abstracts, string $tag): self;
+
+    /**
+     * @throws ContainerLockedException
+     * @throws InvalidAttributeException
+     */
+    public function tagByAttribute(string ...$classes): self;
 
     /**
      * @param class-string|list<class-string> $classes

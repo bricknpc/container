@@ -70,4 +70,16 @@ final class ContainerLockedExceptionTest extends TestCase
         );
         self::assertSame(['classes' => ['First', 'Second']], $exception->context);
     }
+
+    #[Test]
+    public function it_describes_a_configuration_call_on_a_locked_container(): void
+    {
+        $exception = ContainerLockedException::cannotConfigure('tag');
+
+        self::assertSame(
+            'Unable to call tag(): the container is locked and accepts no new registrations.',
+            $exception->getMessage(),
+        );
+        self::assertSame(['method' => 'tag'], $exception->context);
+    }
 }

@@ -12,13 +12,16 @@ use LogicException;
 use ReflectionClass;
 use ReflectionNamedType;
 use ReflectionParameter;
+use Dirthara\Container\Attribute\Tag;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Contract\Scope;
 use Dirthara\Container\Attribute\Inject;
 use Dirthara\Container\Attribute\Scoped;
+use Dirthara\Container\Attribute\Tagged;
 use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Attribute\BoundTo;
 use Dirthara\Container\Attribute\Singleton;
+use Dirthara\Container\Contract\TagResolver;
 use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
@@ -43,7 +46,7 @@ use function is_subclass_of;
 use function array_key_exists;
 use function interface_exists;
 
-final class Container implements ContainerInterface, ContainerConfigurator, InstanceFactory, Invoker, Scope
+final class Container implements ContainerInterface, ContainerConfigurator, InstanceFactory, Invoker, Scope, TagResolver
 {
     /**
      * @var array<string, Binding>
@@ -64,6 +67,11 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @var array<class-string, array<string, ContextualBinding>>
      */
     private array $contextualBindings = [];
+
+    /**
+     * @var array<string, array<string, true>>
+     */
+    private array $tags = [];
 
     /**
      * @var array<string, true>
@@ -104,6 +112,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $this->instances[InstanceFactory::class] = $this;
         $this->instances[Invoker::class] = $this;
         $this->instances[Scope::class] = $this;
+        $this->instances[TagResolver::class] = $this;
     }
 
     /**
@@ -165,6 +174,51 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     public function lock(): void
     {
         $this->locked = true;
+    }
+
+    /**
+     * @param string|list<string> $abstracts
+     *
+     * @throws ContainerLockedException
+     */
+    public function tag(string|array $abstracts, string $tag): self
+    {
+        $this->assertConfigurable('tag');
+
+        foreach (is_string($abstracts) ? [$abstracts] : $abstracts as $abstract) {
+            $this->tags[$tag][$abstract] = true;
+        }
+
+        return $this;
+    }
+
+    /**
+     * @throws ContainerLockedException
+     * @throws InvalidAttributeException
+     */
+    public function tagByAttribute(string ...$classes): self
+    {
+        $this->assertConfigurable('tagByAttribute');
+
+        foreach ($classes as $class) {
+            if (!class_exists($class) && !interface_exists($class)) {
+                throw InvalidAttributeException::unknownClass($class);
+            }
+
+            foreach (new ReflectionClass($class)->getAttributes(Tag::class) as $attribute) {
+                $this->tags[$attribute->newInstance()->name][$class] = true;
+            }
+        }
+
+        return $this;
+    }
+
+    /**
+     * @return iterable<string, mixed>
+     */
+    public function tagged(string $tag): iterable
+    {
+        return new TaggedEntries(fn(): array => array_keys($this->tags[$tag] ?? []), $this->get(...));
     }
 
     /**
@@ -545,6 +599,12 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
             return $this->resolveContextualBinding($contextualClass, $contextual);
         }
 
+        $tagged = $parameter->getAttributes(Tagged::class)[0] ?? null;
+
+        if ($tagged !== null) {
+            return $this->tagged($tagged->newInstance()->name);
+        }
+
         $dependency = $this->injectedEntry($parameter) ?? $type;
 
         if ($dependency !== null && $this->has($dependency)) {
@@ -615,6 +675,16 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     private function instanceOf(string $class): object
     {
         return $this->get($class);
+    }
+
+    /**
+     * @throws ContainerLockedException
+     */
+    private function assertConfigurable(string $method): void
+    {
+        if ($this->locked) {
+            throw ContainerLockedException::cannotConfigure($method);
+        }
     }
 
     /**
