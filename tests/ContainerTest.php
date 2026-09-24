@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dirthara\Container\Tests;
 
 use Error;
+use Fiber;
 use Closure;
 use stdClass;
 use TypeError;
@@ -624,6 +625,41 @@ final class ContainerTest extends TestCase
 
         self::assertInstanceOf(ParentTyped::class, $parentTyped);
         self::assertSame($selfTyped, $parentTyped->parent);
+    }
+
+    #[Test]
+    public function it_tracks_what_each_fiber_is_resolving_separately(): void
+    {
+        $container = new Container()->bind('slow', static function (): stdClass {
+            if (Fiber::getCurrent() !== null) {
+                Fiber::suspend();
+            }
+
+            return new stdClass();
+        });
+        $first = new Fiber(static fn(): mixed => $container->get('slow'));
+        $second = new Fiber(static fn(): mixed => $container->get('slow'));
+
+        $first->start();
+        $second->start();
+        $fromOutsideAFiber = $container->get('slow');
+        $first->resume();
+        $second->resume();
+
+        self::assertInstanceOf(stdClass::class, $fromOutsideAFiber);
+        self::assertInstanceOf(stdClass::class, $first->getReturn());
+        self::assertInstanceOf(stdClass::class, $second->getReturn());
+    }
+
+    #[Test]
+    public function it_detects_a_circular_dependency_inside_a_fiber(): void
+    {
+        $container = new Container();
+        $fiber = new Fiber(static fn(): mixed => $container->get(First::class));
+
+        $this->expectException(CircularDependencyException::class);
+
+        $fiber->start();
     }
 
     #[Test]

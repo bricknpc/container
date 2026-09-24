@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Dirthara\Container;
 
+use Fiber;
 use Closure;
+use WeakMap;
 use Exception;
 use LogicException;
 use ReflectionClass;
@@ -62,6 +64,11 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     private array $resolving = [];
 
     /**
+     * @var WeakMap<Fiber<mixed, mixed, mixed, mixed>, array<string, true>>
+     */
+    private readonly WeakMap $resolvingInFibers;
+
+    /**
      * @var array<class-string, ReflectionClass<object>|null>
      */
     private array $classes = [];
@@ -78,6 +85,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     public function __construct()
     {
         $this->callables = new CallableResolver($this->instanceOf(...));
+        $this->resolvingInFibers = new WeakMap();
         $this->instances[self::class] = $this;
         $this->instances[ContainerInterface::class] = $this;
         $this->instances[ContainerConfigurator::class] = $this;
@@ -312,19 +320,43 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         array $parameters,
         Closure $resolveAlias,
     ): mixed {
-        if (array_key_exists($id, $this->resolving)) {
-            throw CircularDependencyException::forEntry($id, [...array_keys($this->resolving), $id]);
+        $fiber = Fiber::getCurrent();
+        $resolving = $fiber === null ? $this->resolving : $this->resolvingInFibers[$fiber] ?? [];
+
+        if (array_key_exists($id, $resolving)) {
+            throw CircularDependencyException::forEntry($id, [...array_keys($resolving), $id]);
         }
 
-        $this->resolving[$id] = true;
+        $this->track($fiber, [...$resolving, $id => true]);
 
         try {
             return $target instanceof Binding
                 ? $this->resolveBinding($id, $target, $parameters, $resolveAlias)
                 : $this->build($target, $parameters);
         } finally {
-            unset($this->resolving[$id]);
+            $this->track($fiber, $resolving);
         }
+    }
+
+    /**
+     * @param Fiber<mixed, mixed, mixed, mixed>|null $fiber
+     * @param array<string, true> $resolving
+     */
+    private function track(?Fiber $fiber, array $resolving): void
+    {
+        if ($fiber === null) {
+            $this->resolving = $resolving;
+
+            return;
+        }
+
+        if ($resolving === []) {
+            unset($this->resolvingInFibers[$fiber]);
+
+            return;
+        }
+
+        $this->resolvingInFibers[$fiber] = $resolving;
     }
 
     /**

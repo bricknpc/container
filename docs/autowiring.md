@@ -97,3 +97,16 @@ $container->get(First::class);
 
 The exception message names the chain, from the entry that was requested to the one that repeats:
 `First -> Second -> First`. A factory that asks the container for its own entry is detected the same way.
+
+## Fibers
+
+The container keeps track of what it is resolving separately for each
+[Fiber](https://www.php.net/manual/en/language.fibers.php). When a factory suspends its Fiber, another Fiber, or code
+outside any Fiber, can resolve the same entry in the meantime without it being mistaken for a circular dependency, and
+a cycle within one Fiber is still detected.
+
+:::caution
+The container does not wait for a Fiber that is building a singleton or a scoped entry. When two Fibers resolve an entry
+that has not been built yet, and its factory suspends, both build it, and the one that finishes last replaces the other's
+value. Build such entries before the Fibers start, or keep their factories from suspending.
+:::
