@@ -16,6 +16,7 @@ use Dirthara\Container\Tests\Fixtures\LoggingRepository;
 use Dirthara\Container\Tests\Fixtures\DatabaseRepository;
 use Dirthara\Container\Exception\InvalidAttributeException;
 use Dirthara\Container\Tests\Fixtures\DecoratedWithoutParameter;
+use Dirthara\Container\Tests\Fixtures\DecoratorWithoutParameter;
 
 final class DecoratedByTest extends TestCase
 {
@@ -70,7 +71,15 @@ final class DecoratedByTest extends TestCase
     #[Test]
     public function it_refuses_a_decorator_without_a_parameter_for_what_it_decorates(): void
     {
-        $this->expectExceptionMessage('has no constructor parameter of type');
+        $this->expectExceptionMessageIs(
+            'The decorator "'
+            . DecoratorWithoutParameter::class
+            . '" of "'
+            . DecoratedWithoutParameter::class
+            . '" has no constructor parameter of type "'
+            . DecoratedWithoutParameter::class
+            . '" to receive what it decorates.',
+        );
 
         new Container()->get(DecoratedWithoutParameter::class);
     }

@@ -664,7 +664,10 @@ final class ContainerTest extends TestCase
     #[Test]
     public function it_escapes_control_characters_of_an_identifier_in_the_message(): void
     {
-        $this->expectExceptionMessage('No entry "config\nERROR forged" was found');
+        $this->expectExceptionMessageIs(
+            'No entry "config\nERROR forged" was found: it is not bound, not registered as an instance, and not an '
+            . 'instantiable class.',
+        );
 
         new Container()->get("config\nERROR forged");
     }
@@ -1328,7 +1331,7 @@ final class ContainerTest extends TestCase
     public function it_leaves_what_the_callable_throws_unwrapped(): void
     {
         $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('handler failed');
+        $this->expectExceptionMessageIs('handler failed');
 
         new Container()->call([new Handler(), 'fail']);
     }

@@ -52,7 +52,7 @@ final class ContextualBindingBuilderTest extends TestCase
     #[Test]
     public function it_describes_an_invalid_need(): void
     {
-        $this->expectExceptionMessage(
+        $this->expectExceptionMessageIs(
             'Unable to add a contextual binding that needs "retries": it is neither an existing class or interface nor a '
             . 'parameter name prefixed with $.',
         );
