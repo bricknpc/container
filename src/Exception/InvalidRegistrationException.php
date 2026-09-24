@@ -30,4 +30,29 @@ final class InvalidRegistrationException extends InvalidArgumentException implem
             context: ['class' => $class],
         );
     }
+
+    public static function incompatibleInstance(string $id, string $type): self
+    {
+        return new self(
+            message: sprintf(
+                'Unable to register %s as entry "%s": an entry named after a class or interface has to be an instance of it.',
+                self::printable($type),
+                self::printable($id),
+            ),
+            context: ['id' => $id, 'type' => $type],
+        );
+    }
+
+    public static function incompatibleConcrete(string $id, string $concrete): self
+    {
+        return new self(
+            message: sprintf(
+                'Unable to bind entry "%s" to "%s": it does not extend or implement "%s".',
+                self::printable($id),
+                self::printable($concrete),
+                self::printable($id),
+            ),
+            context: ['id' => $id, 'concrete' => $concrete],
+        );
+    }
 }

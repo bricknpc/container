@@ -84,10 +84,24 @@ When the identifier is a class or interface name, static analysers read the retu
 `$container->get(Mailer::class)` is typed as a `Mailer`.
 :::
 
+## Entries named after a type
+
+The container keeps that promise at runtime: when an identifier names an existing class or interface, the value it
+resolves to is an instance of it. Whatever cannot hold is refused as early as it can be found out:
+
+| What breaks the rule | Refused | With |
+| --- | --- | --- |
+| `instance()` or `scopedInstance()` with a value of another type | When it is registered | `InvalidRegistrationException::incompatibleInstance()` |
+| `bind()`, `singleton()`, or `scoped()` to a class that does not extend or implement the type | When it is registered | `InvalidRegistrationException::incompatibleConcrete()` |
+| A factory, an entry bound to another identifier, an extender, or a delegate that returns something else | When the entry is resolved | `ResolutionException::incompatibleType()` |
+
+An identifier that does not name a class or interface, such as `'config'`, can hold any value.
+
 ## Register an instance
 
-`instance()` stores a value that the container returns as it is, every time. The value can be anything, including an
-array or `null`.
+`instance()` stores a value that the container returns as it is, every time. Under an identifier that is not a class
+or interface name the value can be anything, including an array or `null`; under one that is, it has to be an instance
+of it.
 
 ```php
 $container->instance('config', ['debug' => true]);

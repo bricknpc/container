@@ -39,6 +39,9 @@ What a delegate returns is its own value, which this container does not change o
 - `make()` never asks a delegate, because a PSR-11 container cannot build a new instance. For an identifier only a
   delegate has, it throws a `ResolutionException::notBuildable()`, and for a class it builds a new instance itself.
 
+Only its type is checked: for an identifier that names a class or interface, a value of another type throws a
+`ResolutionException::incompatibleType()`, as it would for [any other entry](getting-started.md#entries-named-after-a-type).
+
 An exception the delegate throws while resolving the entry follows the same rules as
 [a factory that throws](error-handling.md#factories-that-throw), and is wrapped in a
 `ResolutionException::delegateFailed()` that names the delegate's class.

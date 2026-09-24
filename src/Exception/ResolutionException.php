@@ -162,4 +162,17 @@ final class ResolutionException extends RuntimeException implements ContainerExc
             context: ['id' => $id, 'delegate' => $delegate, 'exceptionClass' => $previous::class],
         );
     }
+
+    public static function incompatibleType(string $id, string $type): self
+    {
+        return new self(
+            message: sprintf(
+                'Entry "%s" resolved to %s, which is not an instance of "%s".',
+                self::printable($id),
+                self::printable($type),
+                self::printable($id),
+            ),
+            context: ['id' => $id, 'type' => $type],
+        );
+    }
 }

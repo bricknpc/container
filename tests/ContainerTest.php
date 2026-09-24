@@ -53,6 +53,7 @@ use Dirthara\Container\Exception\ContainerLockedException;
 use Dirthara\Container\Exception\InvalidCallableException;
 use Dirthara\Container\Tests\Fixtures\ServiceImplementation;
 use Dirthara\Container\Exception\CircularDependencyException;
+use Dirthara\Container\Exception\InvalidRegistrationException;
 use Dirthara\Container\Tests\Fixtures\OtherServiceImplementation;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
@@ -350,6 +351,7 @@ final class ContainerTest extends TestCase
     public function it_extends_a_singleton_once_and_an_autowired_class_and_an_alias_target(): void
     {
         $calls = new ArrayObject();
+        $replacement = new Plain();
         $container = new Container()
             ->singleton(Service::class, ServiceImplementation::class)
             ->bind('alias', Plain::class)
@@ -358,12 +360,12 @@ final class ContainerTest extends TestCase
 
                 return $service;
             })
-            ->extend(Plain::class, static fn(): stdClass => new stdClass());
+            ->extend(Plain::class, static fn(): Plain => $replacement);
 
         self::assertSame($container->get(Service::class), $container->get(Service::class));
         self::assertSame([Service::class], $calls->getArrayCopy());
-        self::assertInstanceOf(stdClass::class, $container->get(Plain::class));
-        self::assertInstanceOf(stdClass::class, $container->get('alias'));
+        self::assertSame($replacement, $container->get(Plain::class));
+        self::assertSame($replacement, $container->get('alias'));
     }
 
     #[Test]
@@ -545,18 +547,19 @@ final class ContainerTest extends TestCase
     #[Test]
     public function it_neither_keeps_nor_extends_what_a_delegate_returns_and_never_makes_through_one(): void
     {
+        $extended = new Plain();
         $container = new Container()
             ->delegate(new ArrayContainer([
                 Plain::class => static fn(): Plain => new Plain(),
                 'config' => 'delegated',
             ]))
-            ->extend(Plain::class, static fn(): stdClass => new stdClass());
+            ->extend(Plain::class, static fn(): Plain => $extended);
 
         $first = $container->get(Plain::class);
 
-        self::assertInstanceOf(Plain::class, $first);
+        self::assertNotSame($extended, $first);
         self::assertNotSame($first, $container->get(Plain::class));
-        self::assertInstanceOf(stdClass::class, $container->make(Plain::class));
+        self::assertSame($extended, $container->make(Plain::class));
 
         $this->expectException(ResolutionException::class);
 
@@ -611,6 +614,127 @@ final class ContainerTest extends TestCase
         $this->expectException(ContainerLockedException::class);
 
         $container->delegate(new ArrayContainer([]));
+    }
+
+    #[Test]
+    public function it_refuses_an_instance_that_is_not_of_the_type_its_identifier_names(): void
+    {
+        $container = new Container();
+
+        try {
+            $container->instance(Service::class, new Plain());
+            self::fail('Expected an InvalidRegistrationException.');
+        } catch (InvalidRegistrationException $exception) {
+            self::assertSame(
+                'Unable to register '
+                . Plain::class
+                . ' as entry "'
+                . Service::class
+                . '": an entry named after a '
+                . 'class or interface has to be an instance of it.',
+                $exception->getMessage(),
+            );
+            self::assertSame(['id' => Service::class, 'type' => Plain::class], $exception->context);
+        }
+
+        try {
+            $container->scopedInstance(Plain::class, ['not' => 'a plain']);
+            self::fail('Expected an InvalidRegistrationException.');
+        } catch (InvalidRegistrationException $exception) {
+            self::assertSame(['id' => Plain::class, 'type' => 'array'], $exception->context);
+        }
+
+        self::assertFalse($container->has(Service::class));
+        self::assertSame(['debug' => true], $container->instance('config', ['debug' => true])->get('config'));
+    }
+
+    #[Test]
+    public function it_refuses_to_bind_a_type_to_a_class_that_does_not_extend_or_implement_it(): void
+    {
+        try {
+            new Container()->singleton(Service::class, Plain::class);
+            self::fail('Expected an InvalidRegistrationException.');
+        } catch (InvalidRegistrationException $exception) {
+            self::assertSame(
+                'Unable to bind entry "'
+                . Service::class
+                . '" to "'
+                . Plain::class
+                . '": it does not extend or '
+                . 'implement "'
+                . Service::class
+                . '".',
+                $exception->getMessage(),
+            );
+            self::assertSame(['id' => Service::class, 'concrete' => Plain::class], $exception->context);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{Closure(Container): Container}>
+     */
+    public static function incompatibleResolutions(): iterable
+    {
+        yield 'factory' => [
+            static fn(Container $container): Container => $container->bind(
+                Service::class,
+                static fn(): Plain => new Plain(),
+            ),
+        ];
+        yield 'alias' => [
+            static fn(Container $container): Container => $container->bind(Service::class, 'plain')->instance(
+                'plain',
+                new Plain(),
+            ),
+        ];
+        yield 'extender' => [
+            static fn(Container $container): Container => $container->bind(
+                Service::class,
+                ServiceImplementation::class,
+            )->extend(Service::class, static fn(): Plain => new Plain()),
+        ];
+        yield 'delegate' => [
+            static fn(Container $container): Container => $container->delegate(new ArrayContainer([
+                Service::class => new Plain(),
+            ])),
+        ];
+    }
+
+    /**
+     * @param Closure(Container): Container $register
+     */
+    #[Test]
+    #[DataProvider('incompatibleResolutions')]
+    public function it_refuses_to_resolve_a_value_that_is_not_of_the_type_its_identifier_names(Closure $register): void
+    {
+        $container = $register(new Container());
+
+        try {
+            $container->get(Service::class);
+            self::fail('Expected a ResolutionException.');
+        } catch (ResolutionException $exception) {
+            self::assertSame(
+                'Entry "'
+                . Service::class
+                . '" resolved to '
+                . Plain::class
+                . ', which is not an instance of "'
+                . Service::class
+                . '".',
+                $exception->getMessage(),
+            );
+            self::assertSame(['id' => Service::class, 'type' => Plain::class], $exception->context);
+        }
+    }
+
+    #[Test]
+    public function it_refuses_to_make_a_value_that_is_not_of_the_type_its_identifier_names(): void
+    {
+        $container = new Container()->bind(Service::class, static fn(): Plain => new Plain());
+
+        $this->expectException(ResolutionException::class);
+
+        $container->make(Service::class);
     }
 
     #[Test]

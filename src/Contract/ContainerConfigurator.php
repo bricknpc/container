@@ -17,6 +17,7 @@ interface ContainerConfigurator
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      *
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     public function bind(string $abstract, string|Closure|null $concrete = null): self;
 
@@ -24,6 +25,7 @@ interface ContainerConfigurator
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      *
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     public function singleton(string $abstract, string|Closure|null $concrete = null): self;
 
@@ -31,11 +33,13 @@ interface ContainerConfigurator
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      *
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     public function scoped(string $abstract, string|Closure|null $concrete = null): self;
 
     /**
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     public function instance(string $abstract, mixed $instance): self;
 

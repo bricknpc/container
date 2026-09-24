@@ -29,7 +29,7 @@ $container->extend(
 | Parameter | Type | Meaning |
 | --- | --- | --- |
 | `abstract` | `string` | The identifier whose value to extend. It does not have to be registered yet. |
-| `extender` | `Closure` | Called with the built value and the container, and returns the value to use. |
+| `extender` | `Closure` | Called with the built value and the container, and returns the value to use. For an identifier that names a class or interface, that value has to be an instance of it. |
 
 - Extenders run in the order they were registered, each receiving what the one before it returned.
 - They run every time the container builds the entry: on every `get()` for a binding, once for a singleton, once per

@@ -50,6 +50,7 @@ use function array_push;
 use function array_values;
 use function class_exists;
 use function array_diff_key;
+use function get_debug_type;
 use function is_subclass_of;
 use function array_key_exists;
 use function interface_exists;
@@ -102,6 +103,11 @@ final class Container implements
      * @var array<string, bool>
      */
     private array $lazy = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    private array $types = [];
 
     /**
      * @var list<array{string, Closure(object, ContainerInterface): mixed}>
@@ -165,6 +171,7 @@ final class Container implements
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      *
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     public function bind(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -175,6 +182,7 @@ final class Container implements
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      *
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     public function singleton(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -185,6 +193,7 @@ final class Container implements
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      *
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     public function scoped(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -193,10 +202,12 @@ final class Container implements
 
     /**
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     public function instance(string $abstract, mixed $instance): self
     {
         $this->assertUnlocked($abstract);
+        $this->assertCompatibleInstance($abstract, $instance);
 
         unset($this->bindings[$abstract], $this->scopedInstances[$abstract]);
 
@@ -205,8 +216,13 @@ final class Container implements
         return $this;
     }
 
+    /**
+     * @throws InvalidRegistrationException
+     */
     public function scopedInstance(string $abstract, mixed $instance): self
     {
+        $this->assertCompatibleInstance($abstract, $instance);
+
         $this->scopedInstances[$abstract] = $instance;
 
         return $this;
@@ -481,10 +497,15 @@ final class Container implements
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      *
      * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
      */
     private function register(string $abstract, string|Closure|null $concrete, Lifetime $lifetime): self
     {
         $this->assertUnlocked($abstract);
+
+        if (is_string($concrete)) {
+            $this->assertCompatibleConcrete($abstract, $concrete);
+        }
 
         $this->bindings[$abstract] = new Binding(concrete: $concrete ?? $abstract, lifetime: $lifetime);
 
@@ -503,14 +524,14 @@ final class Container implements
         $delegate = array_key_exists($id, $this->bindings) ? null : $this->delegateFor($id);
 
         if ($delegate !== null) {
-            return $this->tracked($id, fn(): mixed => $this->guard(
+            return $this->tracked($id, fn(): mixed => $this->compatible($id, $this->guard(
                 static fn(): mixed => $delegate->get($id),
                 static fn(Exception $exception): ResolutionException => ResolutionException::delegateFailed(
                     $id,
                     $delegate::class,
                     $exception,
                 ),
-            ));
+            )));
         }
 
         $binding = $this->bindingFor($id);
@@ -546,12 +567,12 @@ final class Container implements
         array $parameters,
         Closure $resolveAlias,
     ): mixed {
-        return $this->tracked($id, fn(): mixed => $this->decorate(
+        return $this->tracked($id, fn(): mixed => $this->compatible($id, $this->decorate(
             $id,
             $target instanceof Binding
                 ? $this->resolveBinding($id, $target, $parameters, $resolveAlias)
                 : $this->build($target, $parameters),
-        ));
+        )));
     }
 
     /**
@@ -575,6 +596,43 @@ final class Container implements
         } finally {
             $this->track($fiber, $resolving);
         }
+    }
+
+    /**
+     * @throws ResolutionException
+     */
+    private function compatible(string $id, mixed $resolved): mixed
+    {
+        if (!$this->namesType($id) || $resolved instanceof $id) {
+            return $resolved;
+        }
+
+        throw ResolutionException::incompatibleType($id, get_debug_type($resolved));
+    }
+
+    /**
+     * @throws InvalidRegistrationException
+     */
+    private function assertCompatibleInstance(string $id, mixed $instance): void
+    {
+        if ($this->namesType($id) && !$instance instanceof $id) {
+            throw InvalidRegistrationException::incompatibleInstance($id, get_debug_type($instance));
+        }
+    }
+
+    /**
+     * @throws InvalidRegistrationException
+     */
+    private function assertCompatibleConcrete(string $id, string $concrete): void
+    {
+        if ($this->namesType($id) && $this->namesType($concrete) && !$this->isSubtype($concrete, $id)) {
+            throw InvalidRegistrationException::incompatibleConcrete($id, $concrete);
+        }
+    }
+
+    private function namesType(string $id): bool
+    {
+        return $this->types[$id] ??= class_exists($id) || interface_exists($id);
     }
 
     private function holds(string $id): bool

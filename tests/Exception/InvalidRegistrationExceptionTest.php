@@ -58,4 +58,23 @@ final class InvalidRegistrationExceptionTest extends TestCase
         );
         self::assertSame(['class' => "Service\n"], $exception->context);
     }
+
+    #[Test]
+    public function it_describes_an_incompatible_instance_and_concrete(): void
+    {
+        $instance = InvalidRegistrationException::incompatibleInstance("Service\n", 'int');
+        $concrete = InvalidRegistrationException::incompatibleConcrete('Service', 'Plain');
+
+        self::assertSame(
+            'Unable to register int as entry "Service\\n": an entry named after a class or interface has to be an '
+            . 'instance of it.',
+            $instance->getMessage(),
+        );
+        self::assertSame(['id' => "Service\n", 'type' => 'int'], $instance->context);
+        self::assertSame(
+            'Unable to bind entry "Service" to "Plain": it does not extend or implement "Service".',
+            $concrete->getMessage(),
+        );
+        self::assertSame(['id' => 'Service', 'concrete' => 'Plain'], $concrete->context);
+    }
 }

@@ -33,7 +33,7 @@ try {
 | `ContainerLockedException` | `RuntimeException` | | A method of `ContainerConfigurator` is called after [`lock()`](getting-started.md#lock-the-container). |
 | `InvalidContextualBindingException` | `InvalidArgumentException` | | `when()` names something that is not a class, or `needs()` something that is neither a class or interface nor a parameter name. |
 | `InvalidAttributeException` | `InvalidArgumentException` | | An [attribute](attributes.md) on the type being resolved is used incorrectly. |
-| `InvalidRegistrationException` | `InvalidArgumentException` | | A registration names something it cannot apply to, such as `lazy()` for an interface. |
+| `InvalidRegistrationException` | `InvalidArgumentException` | | A registration names something it cannot apply to, such as `lazy()` for an interface, or a value of another type than its identifier names. |
 | `InvalidCallableException` | `InvalidArgumentException` | | `call()` is given something that is not a closure, a function, a public method, or an invokable class. |
 
 All exception classes are `final`; catch them by class or by `ContainerException`.
@@ -52,6 +52,7 @@ catches `NotFoundExceptionInterface` to fall back to a default never mistakes a 
 | `get(Mailer::class)` after `bind(Mailer::class, 'missing')` | `ResolutionException::unresolvableBinding()` |
 | `get(Mailer::class)` when its factory calls `get('missing')` | `ResolutionException::factoryFailed()`, wrapping the `EntryNotFoundException` |
 | `get(Mailer::class)` when a contextual binding for it gives `'missing'` | `ResolutionException::unresolvableContextualBinding()` |
+| `get(Mailer::class)` when its factory returns something that is not a `Mailer` | `ResolutionException::incompatibleType()` |
 | `get(Mailer::class)` when a contextual factory for it throws | `ResolutionException::contextualFactoryFailed()`, wrapping what it threw |
 
 ## Factories that throw
@@ -96,6 +97,7 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `ResolutionException::unresolvableContextualBinding()` | `class`, `need`, `concrete` |
 | `ResolutionException::contextualFactoryFailed()` | `class`, `need`, and `exceptionClass` |
 | `ResolutionException::extenderFailed()` | `id`, and `exceptionClass`: the class of the exception the extender threw |
+| `ResolutionException::incompatibleType()` | `id`, and `type`: the type of the value it resolved to, such as a class name or `array` |
 | `ResolutionException::delegateFailed()` | `id`, `delegate`: the class of the delegate container, and `exceptionClass` |
 | `ResolutionException::callbackFailed()` | `type`: the type the callback is for, `class`: the class of the built object, and `exceptionClass` |
 | `InvalidContextualBindingException::notAClass()` | `class` |
@@ -107,6 +109,8 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `InvalidAttributeException::notADecorator()` | `class`, and `decorator`: the class its `#[DecoratedBy]` names |
 | `InvalidAttributeException::decoratorWithoutParameter()` | `class`, `decorator` |
 | `InvalidRegistrationException::notALazyClass()` | `class` |
+| `InvalidRegistrationException::incompatibleInstance()` | `id`, and `type`: the type of the value that was given |
+| `InvalidRegistrationException::incompatibleConcrete()` | `id`, `concrete` |
 | `ContainerLockedException::cannotRegister()` | `id` |
 | `ContainerLockedException::cannotAddContextualBinding()` | `classes`: the classes given to `when()` |
 | `ContainerLockedException::cannotConfigure()` | `method`: the method that was called, such as `tag` |
