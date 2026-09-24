@@ -15,6 +15,7 @@ use ReflectionParameter;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Contract\Scope;
 use Dirthara\Container\Contract\Invoker;
+use Dirthara\Container\Attribute\BoundTo;
 use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
@@ -22,6 +23,7 @@ use Dirthara\Container\Contract\ContainerConfigurator;
 use Dirthara\Container\Exception\EntryNotFoundException;
 use Dirthara\Container\Exception\ContainerLockedException;
 use Dirthara\Container\Exception\InvalidCallableException;
+use Dirthara\Container\Exception\InvalidAttributeException;
 use Dirthara\Container\Exception\CircularDependencyException;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
@@ -34,7 +36,9 @@ use function array_push;
 use function array_values;
 use function class_exists;
 use function array_diff_key;
+use function is_subclass_of;
 use function array_key_exists;
+use function interface_exists;
 
 final class Container implements ContainerInterface, ContainerConfigurator, InstanceFactory, Invoker, Scope
 {
@@ -77,6 +81,11 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @var array<string, array<array-key, ReflectionParameter>>
      */
     private array $constructorParameters = [];
+
+    /**
+     * @var array<class-string, Binding|null>
+     */
+    private array $attributeBindings = [];
 
     private readonly CallableResolver $callables;
 
@@ -190,6 +199,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @throws EntryNotFoundException
      * @throws CircularDependencyException
      * @throws ResolutionException
+     * @throws InvalidAttributeException
      */
     public function get(string $id): mixed
     {
@@ -215,10 +225,11 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @throws EntryNotFoundException
      * @throws CircularDependencyException
      * @throws ResolutionException
+     * @throws InvalidAttributeException
      */
     public function make(string $id, array $parameters = []): mixed
     {
-        $binding = $this->bindings[$id] ?? null;
+        $binding = $this->bindingFor($id);
         $class = $binding === null ? $this->instantiableClass($id) : null;
 
         if ($binding === null && $class === null) {
@@ -241,6 +252,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @throws EntryNotFoundException
      * @throws CircularDependencyException
      * @throws ResolutionException
+     * @throws InvalidAttributeException
      */
     public function call(array|string|object $callable, array $parameters = []): mixed
     {
@@ -260,6 +272,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
             array_key_exists($id, $this->scopedInstances)
             || array_key_exists($id, $this->instances)
             || array_key_exists($id, $this->bindings)
+            || $this->hasAttributeBinding($id)
             || $this->instantiableClass($id) !== null
         );
     }
@@ -287,7 +300,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     private function resolveEntry(string $id): mixed
     {
-        $binding = $this->bindings[$id] ?? null;
+        $binding = $this->bindingFor($id);
         $class = $binding === null ? $this->instantiableClass($id) : null;
 
         if ($binding === null && $class === null) {
@@ -607,6 +620,60 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         if ($this->locked) {
             throw ContainerLockedException::cannotRegister($id);
         }
+    }
+
+    /**
+     * @throws InvalidAttributeException
+     */
+    private function bindingFor(string $id): ?Binding
+    {
+        return $this->bindings[$id] ?? $this->attributeBinding($id);
+    }
+
+    private function hasAttributeBinding(string $id): bool
+    {
+        try {
+            return $this->attributeBinding($id) !== null;
+        } catch (InvalidAttributeException) {
+            return true;
+        }
+    }
+
+    /**
+     * @throws InvalidAttributeException
+     */
+    private function attributeBinding(string $id): ?Binding
+    {
+        if (array_key_exists($id, $this->attributeBindings)) {
+            return $this->attributeBindings[$id];
+        }
+
+        if (!class_exists($id) && !interface_exists($id)) {
+            return null;
+        }
+
+        $boundTo = new ReflectionClass($id)->getAttributes(BoundTo::class)[0] ?? null;
+
+        if ($boundTo === null) {
+            $this->attributeBindings[$id] = null;
+
+            return null;
+        }
+
+        $concrete = $boundTo->newInstance()->concrete;
+
+        if (!$this->isSubtype($concrete, $id)) {
+            throw InvalidAttributeException::notASubtype($id, $concrete);
+        }
+
+        $this->attributeBindings[$id] = new Binding(concrete: $concrete, lifetime: Lifetime::Transient);
+
+        return $this->attributeBindings[$id];
+    }
+
+    private function isSubtype(string $class, string $of): bool
+    {
+        return $class === $of || is_subclass_of($class, $of);
     }
 
     private function dependencyOf(ReflectionParameter $parameter): ?string

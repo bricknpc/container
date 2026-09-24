@@ -32,6 +32,7 @@ try {
 | `CircularDependencyException` | `RuntimeException` | | Resolving the entry requires the entry itself. |
 | `ContainerLockedException` | `RuntimeException` | | A registration method is called after [`lock()`](getting-started.md#lock-the-container). |
 | `InvalidContextualBindingException` | `InvalidArgumentException` | | `when()` names something that is not a class, or `needs()` something that is neither a class or interface nor a parameter name. |
+| `InvalidAttributeException` | `InvalidArgumentException` | | An [attribute](attributes.md) on the type being resolved is used incorrectly. |
 | `InvalidCallableException` | `InvalidArgumentException` | | `call()` is given something that is not a closure, a function, a public method, or an invokable class. |
 
 All exception classes are `final`; catch them by class or by `ContainerException`.
@@ -96,6 +97,7 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `InvalidContextualBindingException::notAClass()` | `class` |
 | `InvalidContextualBindingException::invalidNeed()` | `need` |
 | `InvalidCallableException::notCallable()` | `callable` |
+| `InvalidAttributeException::notASubtype()` | `class`, and `concrete`: the class its `#[BoundTo]` names |
 | `ContainerLockedException::cannotRegister()` | `id` |
 | `ContainerLockedException::cannotAddContextualBinding()` | `classes`: the classes given to `when()` |
 
