@@ -83,4 +83,24 @@ final class InvalidAttributeExceptionTest extends TestCase
         );
         self::assertSame(['class' => 'Missing'], $exception->context);
     }
+
+    #[Test]
+    public function it_describes_invalid_decorators(): void
+    {
+        $notADecorator = InvalidAttributeException::notADecorator('Service', 'Plain');
+        $withoutParameter = InvalidAttributeException::decoratorWithoutParameter('Service', 'Decorator');
+
+        self::assertSame(
+            'The #[DecoratedBy] attribute of "Service" names "Plain", which is not a class that extends or implements '
+            . 'it.',
+            $notADecorator->getMessage(),
+        );
+        self::assertSame(['class' => 'Service', 'decorator' => 'Plain'], $notADecorator->context);
+        self::assertSame(
+            'The decorator "Decorator" of "Service" has no constructor parameter of type "Service" to receive what it '
+            . 'decorates.',
+            $withoutParameter->getMessage(),
+        );
+        self::assertSame(['class' => 'Service', 'decorator' => 'Decorator'], $withoutParameter->context);
+    }
 }

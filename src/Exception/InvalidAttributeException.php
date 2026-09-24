@@ -56,4 +56,29 @@ final class InvalidAttributeException extends InvalidArgumentException implement
             context: ['class' => $class],
         );
     }
+
+    public static function notADecorator(string $class, string $decorator): self
+    {
+        return new self(
+            message: sprintf(
+                'The #[DecoratedBy] attribute of "%s" names "%s", which is not a class that extends or implements it.',
+                self::printable($class),
+                self::printable($decorator),
+            ),
+            context: ['class' => $class, 'decorator' => $decorator],
+        );
+    }
+
+    public static function decoratorWithoutParameter(string $class, string $decorator): self
+    {
+        return new self(
+            message: sprintf(
+                'The decorator "%s" of "%s" has no constructor parameter of type "%s" to receive what it decorates.',
+                self::printable($decorator),
+                self::printable($class),
+                self::printable($class),
+            ),
+            context: ['class' => $class, 'decorator' => $decorator],
+        );
+    }
 }

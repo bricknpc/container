@@ -313,6 +313,103 @@ final class ContainerTest extends TestCase
     }
 
     #[Test]
+    public function it_extends_every_value_a_binding_builds_with_the_container(): void
+    {
+        $received = new ArrayObject();
+        $container = new Container()
+            ->bind('list', static fn(): ArrayObject => new ArrayObject(['built']))
+            ->extend('list', static function (mixed $list, ContainerInterface $container) use ($received): mixed {
+                $received->append($container);
+                self::assertInstanceOf(ArrayObject::class, $list);
+                $list->append('first');
+
+                return $list;
+            })
+            ->extend('list', static function (mixed $list): mixed {
+                self::assertInstanceOf(ArrayObject::class, $list);
+                $list->append('second');
+
+                return $list;
+            });
+
+        $first = $container->get('list');
+        $second = $container->make('list');
+
+        self::assertInstanceOf(ArrayObject::class, $first);
+        self::assertSame(['built', 'first', 'second'], $first->getArrayCopy());
+        self::assertNotSame($first, $second);
+        self::assertSame([$container, $container], $received->getArrayCopy());
+    }
+
+    #[Test]
+    public function it_extends_a_singleton_once_and_an_autowired_class_and_an_alias_target(): void
+    {
+        $calls = new ArrayObject();
+        $container = new Container()
+            ->singleton(Service::class, ServiceImplementation::class)
+            ->bind('alias', Plain::class)
+            ->extend(Service::class, static function (mixed $service) use ($calls): mixed {
+                $calls->append(Service::class);
+
+                return $service;
+            })
+            ->extend(Plain::class, static fn(): stdClass => new stdClass());
+
+        self::assertSame($container->get(Service::class), $container->get(Service::class));
+        self::assertSame([Service::class], $calls->getArrayCopy());
+        self::assertInstanceOf(stdClass::class, $container->get(Plain::class));
+        self::assertInstanceOf(stdClass::class, $container->get('alias'));
+    }
+
+    #[Test]
+    public function it_does_not_extend_an_instance(): void
+    {
+        $instance = new Plain();
+        $container = new Container()
+            ->instance(Plain::class, $instance)
+            ->extend(Plain::class, static fn(): stdClass => new stdClass());
+
+        self::assertSame($instance, $container->get(Plain::class));
+    }
+
+    #[Test]
+    public function it_wraps_what_an_extender_throws_but_passes_a_logic_exception_through(): void
+    {
+        $previous = new RuntimeException('failed');
+        $container = new Container()
+            ->extend(Plain::class, static fn(): never => throw $previous)
+            ->extend(Service::class, static fn(): never => throw new LogicException('bug'))
+            ->bind(Service::class, ServiceImplementation::class);
+
+        try {
+            $container->get(Plain::class);
+            self::fail('Expected a ResolutionException.');
+        } catch (ResolutionException $exception) {
+            self::assertSame(
+                'An extender of entry "' . Plain::class . '" failed with RuntimeException.',
+                $exception->getMessage(),
+            );
+            self::assertSame($previous, $exception->getPrevious());
+            self::assertSame(['id' => Plain::class, 'exceptionClass' => RuntimeException::class], $exception->context);
+        }
+
+        $this->expectException(LogicException::class);
+
+        $container->get(Service::class);
+    }
+
+    #[Test]
+    public function it_refuses_to_extend_once_it_is_locked(): void
+    {
+        $container = new Container();
+        $container->lock();
+
+        $this->expectException(ContainerLockedException::class);
+
+        $container->extend(Plain::class, static fn(mixed $plain): mixed => $plain);
+    }
+
+    #[Test]
     public function it_finds_a_class_that_is_defined_after_the_container_first_looked_for_it(): void
     {
         $container = new Container();

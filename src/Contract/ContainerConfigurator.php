@@ -39,6 +39,13 @@ interface ContainerConfigurator
     public function instance(string $abstract, mixed $instance): self;
 
     /**
+     * @param Closure(mixed, ContainerInterface): mixed $extender
+     *
+     * @throws ContainerLockedException
+     */
+    public function extend(string $abstract, Closure $extender): self;
+
+    /**
      * @param string|list<string> $abstracts
      *
      * @throws ContainerLockedException

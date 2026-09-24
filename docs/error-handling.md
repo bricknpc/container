@@ -55,9 +55,9 @@ catches `NotFoundExceptionInterface` to fall back to a default never mistakes a 
 
 ## Factories that throw
 
-When a factory registered with `bind()`, `singleton()`, or a contextual binding's `give()` throws, the container wraps
-the exception in a `ResolutionException` and passes the original as its previous exception, with three exceptions to
-that rule:
+When a factory registered with `bind()`, `singleton()`, `scoped()`, or a contextual binding's `give()`, or an
+[extender](decorators.md#extend-an-entry), throws, the container wraps the exception in a `ResolutionException` and
+passes the original as its previous exception, with three exceptions to that rule:
 
 - This package's own exceptions pass through unchanged, so a `CircularDependencyException` from inside a factory keeps
   its type. The one case that is wrapped is an `EntryNotFoundException`, which would otherwise claim that the factory's
@@ -94,12 +94,15 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `ResolutionException::factoryFailed()` | `id`, and `exceptionClass`: the class of the exception the factory threw |
 | `ResolutionException::unresolvableContextualBinding()` | `class`, `need`, `concrete` |
 | `ResolutionException::contextualFactoryFailed()` | `class`, `need`, and `exceptionClass` |
+| `ResolutionException::extenderFailed()` | `id`, and `exceptionClass`: the class of the exception the extender threw |
 | `InvalidContextualBindingException::notAClass()` | `class` |
 | `InvalidContextualBindingException::invalidNeed()` | `need` |
 | `InvalidCallableException::notCallable()` | `callable` |
 | `InvalidAttributeException::notASubtype()` | `class`, and `concrete`: the class its `#[BoundTo]` names |
 | `InvalidAttributeException::conflictingLifetimes()` | `class` |
 | `InvalidAttributeException::unknownClass()` | `class` |
+| `InvalidAttributeException::notADecorator()` | `class`, and `decorator`: the class its `#[DecoratedBy]` names |
+| `InvalidAttributeException::decoratorWithoutParameter()` | `class`, `decorator` |
 | `ContainerLockedException::cannotRegister()` | `id` |
 | `ContainerLockedException::cannotAddContextualBinding()` | `classes`: the classes given to `when()` |
 | `ContainerLockedException::cannotConfigure()` | `method`: the method that was called, such as `tag` |

@@ -125,4 +125,13 @@ final class ResolutionException extends RuntimeException implements ContainerExc
             context: ['class' => $class, 'need' => $need, 'exceptionClass' => $previous::class],
         );
     }
+
+    public static function extenderFailed(string $id, Throwable $previous): self
+    {
+        return new self(
+            message: sprintf('An extender of entry "%s" failed with %s.', self::printable($id), $previous::class),
+            previous: $previous,
+            context: ['id' => $id, 'exceptionClass' => $previous::class],
+        );
+    }
 }

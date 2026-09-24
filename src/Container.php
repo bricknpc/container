@@ -22,6 +22,7 @@ use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Attribute\BoundTo;
 use Dirthara\Container\Attribute\Singleton;
 use Dirthara\Container\Contract\TagResolver;
+use Dirthara\Container\Attribute\DecoratedBy;
 use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
@@ -72,6 +73,16 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @var array<string, array<string, true>>
      */
     private array $tags = [];
+
+    /**
+     * @var array<string, list<Closure(mixed, ContainerInterface): mixed>>
+     */
+    private array $extenders = [];
+
+    /**
+     * @var array<string, list<array{class-string, string}>>
+     */
+    private array $decorators = [];
 
     /**
      * @var array<string, true>
@@ -174,6 +185,20 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     public function lock(): void
     {
         $this->locked = true;
+    }
+
+    /**
+     * @param Closure(mixed, ContainerInterface): mixed $extender
+     *
+     * @throws ContainerLockedException
+     */
+    public function extend(string $abstract, Closure $extender): self
+    {
+        $this->assertConfigurable('extend');
+
+        $this->extenders[$abstract][] = $extender;
+
+        return $this;
     }
 
     /**
@@ -400,9 +425,12 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $this->track($fiber, [...$resolving, $id => true]);
 
         try {
-            return $target instanceof Binding
-                ? $this->resolveBinding($id, $target, $parameters, $resolveAlias)
-                : $this->build($target, $parameters);
+            return $this->decorate(
+                $id,
+                $target instanceof Binding
+                    ? $this->resolveBinding($id, $target, $parameters, $resolveAlias)
+                    : $this->build($target, $parameters),
+            );
         } finally {
             $this->track($fiber, $resolving);
         }
@@ -441,9 +469,8 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $concrete = $binding->concrete;
 
         if ($concrete instanceof Closure) {
-            return $this->callFactory(
-                $concrete,
-                $parameters,
+            return $this->guard(
+                fn(): mixed => $concrete($this, $parameters),
                 static fn(Exception $exception): ResolutionException => ResolutionException::factoryFailed(
                     $id,
                     $exception,
@@ -467,16 +494,15 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     }
 
     /**
-     * @param Closure(ContainerInterface, array<string, mixed>): mixed $factory
-     * @param array<string, mixed> $parameters
+     * @param Closure(): mixed $call
      * @param Closure(Exception): ResolutionException $wrap
      *
      * @throws ResolutionException
      */
-    private function callFactory(Closure $factory, array $parameters, Closure $wrap): mixed
+    private function guard(Closure $call, Closure $wrap): mixed
     {
         try {
-            return $factory($this, $parameters);
+            return $call();
         } catch (EntryNotFoundException $exception) {
             throw $wrap($exception);
         } catch (ContainerException|LogicException $exception) {
@@ -484,6 +510,81 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         } catch (Exception $exception) {
             throw $wrap($exception);
         }
+    }
+
+    /**
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     * @throws InvalidAttributeException
+     */
+    private function decorate(string $id, mixed $value): mixed
+    {
+        foreach ($this->decoratorsOf($id) as [$decorator, $parameter]) {
+            $value = $this->make($decorator, [$parameter => $value]);
+        }
+
+        foreach ($this->extenders[$id] ?? [] as $extender) {
+            // @mago-expect analysis:mixed-assignment -- an extender can return any value
+            $value = $this->guard(
+                fn(): mixed => $extender($value, $this),
+                static fn(Exception $exception): ResolutionException => ResolutionException::extenderFailed(
+                    $id,
+                    $exception,
+                ),
+            );
+        }
+
+        return $value;
+    }
+
+    /**
+     * @throws InvalidAttributeException
+     *
+     * @return list<array{class-string, string}>
+     */
+    private function decoratorsOf(string $id): array
+    {
+        if (array_key_exists($id, $this->decorators)) {
+            return $this->decorators[$id];
+        }
+
+        if (!class_exists($id) && !interface_exists($id)) {
+            return [];
+        }
+
+        $decorators = [];
+
+        foreach (new ReflectionClass($id)->getAttributes(DecoratedBy::class) as $attribute) {
+            $decorator = $attribute->newInstance()->decorator;
+            $decorators[] = [$decorator, $this->decoratedParameter($id, $decorator)];
+        }
+
+        $this->decorators[$id] = $decorators;
+
+        return $decorators;
+    }
+
+    /**
+     * @param class-string $id
+     * @param class-string $decorator
+     *
+     * @throws InvalidAttributeException
+     */
+    private function decoratedParameter(string $id, string $decorator): string
+    {
+        $class = $this->instantiableClass($decorator);
+
+        if ($class === null || $decorator === $id || !$this->isSubtype($decorator, $id)) {
+            throw InvalidAttributeException::notADecorator($id, $decorator);
+        }
+
+        foreach ($class->getConstructor()?->getParameters() ?? [] as $parameter) {
+            if ($this->dependencyOf($parameter) === $id) {
+                return $parameter->getName();
+            }
+        }
+
+        throw InvalidAttributeException::decoratorWithoutParameter($id, $decorator);
     }
 
     /**
@@ -649,9 +750,8 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         }
 
         if ($concrete instanceof Closure) {
-            return $this->callFactory(
-                $concrete,
-                [],
+            return $this->guard(
+                fn(): mixed => $concrete($this),
                 static fn(Exception $exception): ResolutionException => ResolutionException::contextualFactoryFailed(
                     $class,
                     $binding->need,
