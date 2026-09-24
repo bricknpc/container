@@ -6,6 +6,10 @@ sidebar_position: 6
 description: Build new instances with make(), pass constructor parameters, and call methods and closures with call().
 ---
 
+`make()` is also available through the `Dirthara\Container\Contract\InstanceFactory` interface, and `call()` through
+`Dirthara\Container\Contract\Invoker`, for code that should not depend on `Container`; see
+[depend on the interfaces](getting-started.md#depend-on-the-interfaces).
+
 ## Make a new instance
 
 `make()` builds a new instance every time it is called, for any class the container can build, whether or not it is
@@ -78,6 +82,22 @@ $container->bind(Report::class, static fn(ContainerInterface $container, array $
 
 $container->make(Report::class, ['title' => 'Sales']);
 ```
+
+A factory receives the container as a `ContainerInterface`, which has no `make()`. To build another instance with
+parameters from inside a factory, get the `InstanceFactory` from the container:
+
+```php
+use Dirthara\Container\Contract\InstanceFactory;
+
+$container->bind(SalesReport::class, static function (ContainerInterface $container): SalesReport {
+    $factory = $container->get(InstanceFactory::class);
+    assert($factory instanceof InstanceFactory);
+
+    return new SalesReport($factory->make(Report::class, ['title' => 'Sales']));
+});
+```
+
+`ContainerInterface::get()` is declared to return `mixed`, so the `assert()` tells a static analyser what it holds.
 
 ## Call a method or a closure
 

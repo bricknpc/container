@@ -15,6 +15,7 @@ use PHPUnit\Framework\TestCase;
 use Dirthara\Container\Container;
 use Psr\Container\ContainerInterface;
 use PHPUnit\Framework\Attributes\Test;
+use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Tests\Fixtures\Suit;
 use Dirthara\Container\Tests\Fixtures\First;
 use Dirthara\Container\Tests\Fixtures\Plain;
@@ -26,6 +27,7 @@ use Dirthara\Container\Tests\Fixtures\Handler;
 use Dirthara\Container\Tests\Fixtures\Scalars;
 use Dirthara\Container\Tests\Fixtures\Service;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Tests\Fixtures\SelfTyped;
 use Dirthara\Container\Tests\Fixtures\ParentTyped;
 use Dirthara\Container\Tests\Fixtures\NeedsService;
@@ -54,6 +56,8 @@ final class ContainerTest extends TestCase
         self::assertSame($container, $container->get(Container::class));
         self::assertSame($container, $container->get(ContainerInterface::class));
         self::assertSame($container, $container->get(ContainerConfigurator::class));
+        self::assertSame($container, $container->get(InstanceFactory::class));
+        self::assertSame($container, $container->get(Invoker::class));
     }
 
     #[Test]
@@ -75,6 +79,33 @@ final class ContainerTest extends TestCase
         self::assertSame($container->get('shared'), $container->get('shared'));
         self::assertSame(['debug' => true], $container->get('config'));
         self::assertInstanceOf(OtherServiceImplementation::class, $container->get(NeedsService::class)->service);
+    }
+
+    #[Test]
+    public function it_makes_and_calls_through_the_instance_factory_and_invoker_interfaces(): void
+    {
+        $container = new Container();
+        $factory = $container->get(InstanceFactory::class);
+        $invoker = $container->get(Invoker::class);
+
+        self::assertSame(4, $factory->make(RequiresNumber::class, ['number' => 4])->number);
+        self::assertSame(['a', 'b'], $invoker->call([new Handler(), 'collect'], ['items' => ['a', 'b']]));
+    }
+
+    #[Test]
+    public function it_lets_a_bound_factory_make_instances_through_the_instance_factory(): void
+    {
+        $container = new Container()->bind('number', static function (ContainerInterface $container): RequiresNumber {
+            $factory = $container->get(InstanceFactory::class);
+            self::assertInstanceOf(InstanceFactory::class, $factory);
+
+            return $factory->make(RequiresNumber::class, ['number' => 3]);
+        });
+
+        $made = $container->get('number');
+
+        self::assertInstanceOf(RequiresNumber::class, $made);
+        self::assertSame(3, $made->number);
     }
 
     #[Test]

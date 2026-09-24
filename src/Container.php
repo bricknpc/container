@@ -14,6 +14,8 @@ use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionFunctionAbstract;
 use Psr\Container\ContainerInterface;
+use Dirthara\Container\Contract\Invoker;
+use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
 use Dirthara\Container\Contract\ContainerConfigurator;
@@ -38,7 +40,7 @@ use function array_diff_key;
 use function function_exists;
 use function array_key_exists;
 
-final class Container implements ContainerInterface, ContainerConfigurator
+final class Container implements ContainerInterface, ContainerConfigurator, InstanceFactory, Invoker
 {
     /**
      * @var array<string, Binding>
@@ -65,6 +67,8 @@ final class Container implements ContainerInterface, ContainerConfigurator
         $this->instances[self::class] = $this;
         $this->instances[ContainerInterface::class] = $this;
         $this->instances[ContainerConfigurator::class] = $this;
+        $this->instances[InstanceFactory::class] = $this;
+        $this->instances[Invoker::class] = $this;
     }
 
     /**

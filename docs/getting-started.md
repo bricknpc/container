@@ -13,20 +13,22 @@ use Dirthara\Container\Container;
 $container = new Container();
 ```
 
-A new container already holds itself under `Container::class`, `Psr\Container\ContainerInterface`, and
-`Dirthara\Container\Contract\ContainerConfigurator`, so a class that needs the container can ask for it in its
+A new container already holds itself under `Container::class`, `Psr\Container\ContainerInterface`, and each interface
+in [depend on the interfaces](#depend-on-the-interfaces), so a class that needs the container can ask for it in its
 constructor.
 
 The registration methods, `bind()`, `singleton()`, and `instance()`, return the container, so calls can be chained.
 
 ## Depend on the interfaces
 
-The container implements two interfaces, one for each side of its work:
+The container implements one interface for each part of its work:
 
 | Interface | Methods | Use it for |
 | --- | --- | --- |
 | `Psr\Container\ContainerInterface` | `get()`, `has()` | Resolving entries. |
 | `Dirthara\Container\Contract\ContainerConfigurator` | `bind()`, `singleton()`, `instance()`, `when()` | Registering entries and [contextual bindings](contextual-bindings.md). |
+| `Dirthara\Container\Contract\InstanceFactory` | `make()` | [Building a new instance](making-and-calling.md#make-a-new-instance) with some constructor parameters given. |
+| `Dirthara\Container\Contract\Invoker` | `call()` | [Calling a method or a closure](making-and-calling.md#call-a-method-or-a-closure) with its parameters filled in. |
 
 Type against the interface that matches what the code does, rather than against `Container`:
 
@@ -52,8 +54,7 @@ Through `ContainerConfigurator`, a contextual binding is typed against interface
 never reaches a concrete class.
 
 :::note
-Neither interface extends the other. Code that both registers and resolves entries needs both, and `make()` and
-`call()` are only on `Container`.
+None of the interfaces extends another. Code that both registers and resolves entries asks for both.
 :::
 
 ## Resolve an entry
