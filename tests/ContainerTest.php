@@ -30,6 +30,7 @@ use Dirthara\Container\Tests\Fixtures\Service;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Tests\Fixtures\SelfTyped;
+use Dirthara\Container\Tests\Fixtures\DefinedLate;
 use Dirthara\Container\Tests\Fixtures\ParentTyped;
 use Dirthara\Container\Tests\Fixtures\NeedsService;
 use Dirthara\Container\Exception\ContainerException;
@@ -219,6 +220,19 @@ final class ContainerTest extends TestCase
         self::assertTrue($container->has('config'));
         self::assertTrue($container->has(Service::class));
         self::assertTrue($container->has(Plain::class));
+    }
+
+    #[Test]
+    public function it_finds_a_class_that_is_defined_after_the_container_first_looked_for_it(): void
+    {
+        $container = new Container();
+
+        self::assertFalse($container->has(DefinedLate::class));
+
+        require_once __DIR__ . '/Fixtures/Late/DefinedLate.php';
+
+        self::assertTrue($container->has(DefinedLate::class));
+        self::assertInstanceOf(DefinedLate::class, $container->get(DefinedLate::class));
     }
 
     #[Test]

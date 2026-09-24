@@ -68,6 +68,16 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     private array $resolving = [];
 
+    /**
+     * @var array<class-string, ReflectionClass<object>|null>
+     */
+    private array $classes = [];
+
+    /**
+     * @var array<string, array<array-key, ReflectionParameter>>
+     */
+    private array $constructorParameters = [];
+
     public function __construct()
     {
         $this->instances[self::class] = $this;
@@ -369,7 +379,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
 
         return $class->newInstance(...$this->resolveArguments(
             $name,
-            $class->getConstructor()?->getParameters() ?? [],
+            $this->constructorParameters[$name] ??= $class->getConstructor()?->getParameters() ?? [],
             $parameters,
             $name,
         ));
@@ -588,12 +598,17 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     private function instantiableClass(string $id): ?ReflectionClass
     {
+        if (array_key_exists($id, $this->classes)) {
+            return $this->classes[$id];
+        }
+
         if (!class_exists($id)) {
             return null;
         }
 
         $class = new ReflectionClass($id);
+        $this->classes[$id] = $class->isInstantiable() ? $class : null;
 
-        return $class->isInstantiable() ? $class : null;
+        return $this->classes[$id];
     }
 }
