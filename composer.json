@@ -2,10 +2,19 @@
     "name": "dirthara/container",
     "description": "Dependency injection container for the Dirthara framework",
     "type": "library",
+    "keywords": [
+        "psr-11",
+        "container",
+        "dependency-injection",
+        "autowiring"
+    ],
     "homepage": "https://dirthara.github.io/docs/",
     "require": {
         "php": "^8.5",
         "psr/container": "^2.0"
+    },
+    "provide": {
+        "psr/container-implementation": "^1.0 || ^2.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^12.0 || ^13.0"

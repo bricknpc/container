@@ -2,7 +2,7 @@
 id: installation
 title: Installation
 sidebar_position: 2
-description: Requirements and installation status for Dirthara Container.
+description: Requirements and installation of Dirthara Container.
 ---
 
 ## Requirements
@@ -16,16 +16,14 @@ runtime dependency, the PSR interface package it implements:
 
 ## Package installation
 
-Once published, install the package using Composer:
+Install the package with Composer:
 
 ```sh
 composer require dirthara/container
 ```
 
-:::caution
-There is no published release yet. The command above describes the intended
-installation after publication.
-:::
+The package declares that it provides `psr/container-implementation`, so a library that requires a PSR-11 container
+implementation, rather than a specific container, can be installed together with it.
 
 For development, follow the Docker and Composer setup in the repository's
 [README](https://github.com/dirthara/container#readme). Development tooling
