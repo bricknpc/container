@@ -59,4 +59,16 @@ final class InvalidAttributeExceptionTest extends TestCase
         );
         self::assertSame(['class' => "Clock\n", 'concrete' => 'Plain'], $exception->context);
     }
+
+    #[Test]
+    public function it_describes_a_type_with_conflicting_lifetimes(): void
+    {
+        $exception = InvalidAttributeException::conflictingLifetimes('Service');
+
+        self::assertSame(
+            'The type "Service" has both a #[Singleton] and a #[Scoped] attribute, and can only have one lifetime.',
+            $exception->getMessage(),
+        );
+        self::assertSame(['class' => 'Service'], $exception->context);
+    }
 }

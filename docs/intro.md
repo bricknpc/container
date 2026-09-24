@@ -30,8 +30,8 @@ $mailer = $container->get(Mailer::class);
 `Mailer` is not registered, so the container autowires it: it reads the constructor, resolves a `LoggerInterface`
 argument to a new `FileLogger`, and builds the `Mailer`.
 
-[Attributes](attributes.md) let a type declare its own default implementation, such as
-`#[BoundTo(SystemClock::class)]` on a `Clock` interface.
+[Attributes](attributes.md) let a type declare its own default implementation and lifetime, such as
+`#[BoundTo(SystemClock::class)]` on a `Clock` interface, or `#[Singleton]` on a class.
 
 [Contextual bindings](contextual-bindings.md) change what one class receives without changing it for the rest:
 `$container->when(Mailer::class)->needs(LoggerInterface::class)->give(MailLogger::class)`.

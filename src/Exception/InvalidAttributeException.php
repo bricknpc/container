@@ -34,4 +34,15 @@ final class InvalidAttributeException extends InvalidArgumentException implement
             context: ['class' => $class, 'concrete' => $concrete],
         );
     }
+
+    public static function conflictingLifetimes(string $class): self
+    {
+        return new self(
+            message: sprintf(
+                'The type "%s" has both a #[Singleton] and a #[Scoped] attribute, and can only have one lifetime.',
+                self::printable($class),
+            ),
+            context: ['class' => $class],
+        );
+    }
 }

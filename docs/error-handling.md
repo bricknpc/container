@@ -98,6 +98,7 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `InvalidContextualBindingException::invalidNeed()` | `need` |
 | `InvalidCallableException::notCallable()` | `callable` |
 | `InvalidAttributeException::notASubtype()` | `class`, and `concrete`: the class its `#[BoundTo]` names |
+| `InvalidAttributeException::conflictingLifetimes()` | `class` |
 | `ContainerLockedException::cannotRegister()` | `id` |
 | `ContainerLockedException::cannotAddContextualBinding()` | `classes`: the classes given to `when()` |
 

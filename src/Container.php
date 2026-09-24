@@ -14,8 +14,10 @@ use ReflectionNamedType;
 use ReflectionParameter;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Contract\Scope;
+use Dirthara\Container\Attribute\Scoped;
 use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Attribute\BoundTo;
+use Dirthara\Container\Attribute\Singleton;
 use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
@@ -652,23 +654,46 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
             return null;
         }
 
-        $boundTo = new ReflectionClass($id)->getAttributes(BoundTo::class)[0] ?? null;
+        $class = new ReflectionClass($id);
+        $boundTo = $class->getAttributes(BoundTo::class)[0] ?? null;
+        $lifetime = $this->lifetimeOf($class);
 
-        if ($boundTo === null) {
+        if ($boundTo === null && $lifetime === Lifetime::Transient) {
             $this->attributeBindings[$id] = null;
 
             return null;
         }
 
-        $concrete = $boundTo->newInstance()->concrete;
+        $concrete = $boundTo === null ? $id : $boundTo->newInstance()->concrete;
 
         if (!$this->isSubtype($concrete, $id)) {
             throw InvalidAttributeException::notASubtype($id, $concrete);
         }
 
-        $this->attributeBindings[$id] = new Binding(concrete: $concrete, lifetime: Lifetime::Transient);
+        $this->attributeBindings[$id] = new Binding(concrete: $concrete, lifetime: $lifetime);
 
         return $this->attributeBindings[$id];
+    }
+
+    /**
+     * @param ReflectionClass<object> $class
+     *
+     * @throws InvalidAttributeException
+     */
+    private function lifetimeOf(ReflectionClass $class): Lifetime
+    {
+        $singleton = $class->getAttributes(Singleton::class) !== [];
+        $scoped = $class->getAttributes(Scoped::class) !== [];
+
+        if ($singleton && $scoped) {
+            throw InvalidAttributeException::conflictingLifetimes($class->getName());
+        }
+
+        return match (true) {
+            $singleton => Lifetime::Shared,
+            $scoped => Lifetime::Scoped,
+            default => Lifetime::Transient,
+        };
     }
 
     private function isSubtype(string $class, string $of): bool
