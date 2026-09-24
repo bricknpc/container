@@ -7,6 +7,7 @@ namespace Dirthara\Container;
 use Closure;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Contract\ContainerConfigurator;
+use Dirthara\Container\Exception\ContainerLockedException;
 use Dirthara\Container\Contract\PendingContextualBinding as PendingContextualBindingContract;
 
 /**
@@ -33,6 +34,8 @@ final readonly class PendingContextualBinding implements PendingContextualBindin
     /**
      * @param string|Closure(ContainerInterface): mixed $concrete
      *
+     * @throws ContainerLockedException
+     *
      * @return TConfigurator
      */
     public function give(string|Closure $concrete): ContainerConfigurator
@@ -43,6 +46,8 @@ final readonly class PendingContextualBinding implements PendingContextualBindin
     }
 
     /**
+     * @throws ContainerLockedException
+     *
      * @return TConfigurator
      */
     public function giveValue(mixed $value): ContainerConfigurator

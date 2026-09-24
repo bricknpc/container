@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dirthara\Container\Tests;
 
 use Error;
+use Closure;
 use stdClass;
 use TypeError;
 use ArrayObject;
@@ -42,6 +43,7 @@ use Dirthara\Container\Tests\Fixtures\NullableService;
 use Dirthara\Container\Tests\Fixtures\OptionalService;
 use Dirthara\Container\Exception\EntryNotFoundException;
 use Dirthara\Container\Tests\Fixtures\InheritsSelfTyped;
+use Dirthara\Container\Exception\ContainerLockedException;
 use Dirthara\Container\Exception\InvalidCallableException;
 use Dirthara\Container\Tests\Fixtures\ServiceImplementation;
 use Dirthara\Container\Exception\CircularDependencyException;
@@ -197,6 +199,91 @@ final class ContainerTest extends TestCase
 
         self::assertNotSame($scoped, $container->make(Plain::class));
         self::assertSame($scoped, $container->get(Plain::class));
+    }
+
+    /**
+     * @return iterable<string, array{Closure(Container): mixed}>
+     */
+    public static function registrations(): iterable
+    {
+        yield 'bind' => [static fn(Container $container): Container => $container->bind('service', Plain::class)];
+        yield 'singleton' => [static fn(Container $container): Container => $container->singleton('service')];
+        yield 'scoped' => [static fn(Container $container): Container => $container->scoped('service')];
+        yield 'instance' => [static fn(Container $container): Container => $container->instance('service', 1)];
+    }
+
+    /**
+     * @param Closure(Container): mixed $register
+     */
+    #[Test]
+    #[DataProvider('registrations')]
+    public function it_refuses_to_register_an_entry_once_it_is_locked(Closure $register): void
+    {
+        $container = new Container();
+        $container->lock();
+
+        try {
+            $register($container);
+            self::fail('Expected a ContainerLockedException.');
+        } catch (ContainerLockedException $exception) {
+            self::assertSame(['id' => 'service'], $exception->context);
+            self::assertFalse($container->has('service'));
+        }
+    }
+
+    #[Test]
+    public function it_refuses_a_contextual_binding_once_it_is_locked(): void
+    {
+        $container = new Container();
+        $container->lock();
+
+        try {
+            $container->when([Mailer::class, NeedsService::class]);
+            self::fail('Expected a ContainerLockedException.');
+        } catch (ContainerLockedException $exception) {
+            self::assertSame(['classes' => [Mailer::class, NeedsService::class]], $exception->context);
+        }
+    }
+
+    #[Test]
+    public function it_refuses_a_contextual_binding_that_is_completed_after_it_is_locked(): void
+    {
+        $container = new Container();
+        $pending = $container->when(NeedsService::class)->needs(Service::class);
+        $container->lock();
+
+        try {
+            $pending->give(ServiceImplementation::class);
+            self::fail('Expected a ContainerLockedException.');
+        } catch (ContainerLockedException $exception) {
+            self::assertSame(['classes' => [NeedsService::class]], $exception->context);
+        }
+
+        $this->expectException(ResolutionException::class);
+
+        $container->get(NeedsService::class);
+    }
+
+    #[Test]
+    public function it_keeps_resolving_and_scoping_entries_once_it_is_locked(): void
+    {
+        $container = new Container()
+            ->singleton(Service::class, ServiceImplementation::class)
+            ->scoped(Plain::class);
+        $container->lock();
+        $container->lock();
+
+        $scoped = $container->get(Plain::class);
+        $container->scopedInstance('request', ['path' => '/']);
+
+        self::assertInstanceOf(ServiceImplementation::class, $container->get(Service::class));
+        self::assertSame($scoped, $container->get(Plain::class));
+        self::assertSame(['path' => '/'], $container->get('request'));
+
+        $container->resetScope();
+
+        self::assertNotSame($scoped, $container->get(Plain::class));
+        self::assertFalse($container->has('request'));
     }
 
     #[Test]

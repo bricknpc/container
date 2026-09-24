@@ -10,7 +10,7 @@ description: The exception interface, the exception classes, what get() throws w
 Every exception the package throws implements `Dirthara\Container\Exception\ContainerException`, which extends the
 PSR-11 `ContainerExceptionInterface`, so one `catch` covers them all. Each also extends the SPL exception that
 describes the failure: an invalid registration throws an `InvalidArgumentException`, and a failure to resolve an entry
-throws a `RuntimeException`.
+or a registration on a locked container throws a `RuntimeException`.
 
 ```php
 use Dirthara\Container\Exception\ContainerException;
@@ -30,6 +30,7 @@ try {
 | `EntryNotFoundException` | `RuntimeException` | `NotFoundExceptionInterface` | The requested identifier is not registered and is not an instantiable class. |
 | `ResolutionException` | `RuntimeException` | | The entry exists but cannot be built: a binding points at nothing, a parameter cannot be filled in, or a factory failed. |
 | `CircularDependencyException` | `RuntimeException` | | Resolving the entry requires the entry itself. |
+| `ContainerLockedException` | `RuntimeException` | | A registration method is called after [`lock()`](getting-started.md#lock-the-container). |
 | `InvalidContextualBindingException` | `InvalidArgumentException` | | `when()` names something that is not a class, or `needs()` something that is neither a class or interface nor a parameter name. |
 | `InvalidCallableException` | `InvalidArgumentException` | | `call()` is given something that is not a closure, a function, a public method, or an invokable class. |
 
@@ -95,6 +96,8 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `InvalidContextualBindingException::notAClass()` | `class` |
 | `InvalidContextualBindingException::invalidNeed()` | `need` |
 | `InvalidCallableException::notCallable()` | `callable` |
+| `ContainerLockedException::cannotRegister()` | `id` |
+| `ContainerLockedException::cannotAddContextualBinding()` | `classes`: the classes given to `when()` |
 
 A `target` is what the parameters belong to: a class for a constructor, `Class::method` for a method, `Closure` for a
 closure, or the name of a function.

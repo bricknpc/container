@@ -18,6 +18,7 @@ use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
 use Dirthara\Container\Contract\ContainerConfigurator;
 use Dirthara\Container\Exception\EntryNotFoundException;
+use Dirthara\Container\Exception\ContainerLockedException;
 use Dirthara\Container\Exception\InvalidCallableException;
 use Dirthara\Container\Exception\CircularDependencyException;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
@@ -72,6 +73,8 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
 
     private readonly CallableResolver $callables;
 
+    private bool $locked = false;
+
     public function __construct()
     {
         $this->callables = new CallableResolver($this->instanceOf(...));
@@ -85,6 +88,8 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
 
     /**
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
+     *
+     * @throws ContainerLockedException
      */
     public function bind(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -93,6 +98,8 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
 
     /**
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
+     *
+     * @throws ContainerLockedException
      */
     public function singleton(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -101,14 +108,21 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
 
     /**
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
+     *
+     * @throws ContainerLockedException
      */
     public function scoped(string $abstract, string|Closure|null $concrete = null): self
     {
         return $this->register($abstract, $concrete, Lifetime::Scoped);
     }
 
+    /**
+     * @throws ContainerLockedException
+     */
     public function instance(string $abstract, mixed $instance): self
     {
+        $this->assertUnlocked($abstract);
+
         unset($this->bindings[$abstract], $this->scopedInstances[$abstract]);
 
         $this->instances[$abstract] = $instance;
@@ -128,9 +142,15 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $this->scopedInstances = [];
     }
 
+    public function lock(): void
+    {
+        $this->locked = true;
+    }
+
     /**
      * @param class-string|list<class-string> $classes
      *
+     * @throws ContainerLockedException
      * @throws InvalidContextualBindingException
      *
      * @return ContextualBindingBuilder<self>
@@ -138,6 +158,10 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     public function when(string|array $classes): ContextualBindingBuilder
     {
         $classes = is_string($classes) ? [$classes] : $classes;
+
+        if ($this->locked) {
+            throw ContainerLockedException::cannotAddContextualBinding($classes);
+        }
 
         foreach ($classes as $class) {
             if (!class_exists($class)) {
@@ -234,9 +258,13 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
 
     /**
      * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
+     *
+     * @throws ContainerLockedException
      */
     private function register(string $abstract, string|Closure|null $concrete, Lifetime $lifetime): self
     {
+        $this->assertUnlocked($abstract);
+
         $this->bindings[$abstract] = new Binding(concrete: $concrete ?? $abstract, lifetime: $lifetime);
 
         unset($this->instances[$abstract], $this->scopedInstances[$abstract]);
@@ -358,9 +386,15 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
 
     /**
      * @param list<class-string> $classes
+     *
+     * @throws ContainerLockedException
      */
     private function addContextualBinding(array $classes, ContextualBinding $binding): void
     {
+        if ($this->locked) {
+            throw ContainerLockedException::cannotAddContextualBinding($classes);
+        }
+
         foreach ($classes as $class) {
             $this->contextualBindings[$class][$binding->need] = $binding;
         }
@@ -531,6 +565,16 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     private function instanceOf(string $class): object
     {
         return $this->get($class);
+    }
+
+    /**
+     * @throws ContainerLockedException
+     */
+    private function assertUnlocked(string $id): void
+    {
+        if ($this->locked) {
+            throw ContainerLockedException::cannotRegister($id);
+        }
     }
 
     private function dependencyOf(ReflectionParameter $parameter): ?string

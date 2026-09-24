@@ -178,6 +178,32 @@ ends. Make everything that depends on a scoped entry scoped as well, or give it 
 when it is needed.
 :::
 
+## Lock the container
+
+Once an application has registered everything it needs, `lock()` stops the container from accepting more. After it,
+`bind()`, `singleton()`, `scoped()`, `instance()`, and `when()` throw a `ContainerLockedException`, and so do `give()`
+and `giveValue()` on a contextual binding that was started before the lock.
+
+```php
+$container->singleton(Connection::class, PdoConnection::class);
+$container->scoped(UnitOfWork::class);
+$container->lock();
+
+$container->bind(Clock::class, SystemClock::class); // throws a ContainerLockedException
+```
+
+A registration made while the application is already handling requests would change entries that other classes have
+already received, so the lock turns that mistake into an error at the call that made it.
+
+Resolving is unaffected, and so is the scope: `scopedInstance()` and `resetScope()` keep working, because a locked
+container still has to take in each request and forget it afterwards. Locking twice does nothing, and there is no way to
+unlock.
+
+:::note
+`lock()` is only on `Container`, not on any of the interfaces: the code that creates the container decides when
+registration is over, and code that received a `ContainerConfigurator` cannot close it for everyone else.
+:::
+
 ## Replace an entry
 
 Registering an identifier again replaces what was there. `bind()`, `singleton()`, and `scoped()` discard a registered
