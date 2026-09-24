@@ -21,6 +21,7 @@ use Dirthara\Container\Attribute\Scoped;
 use Dirthara\Container\Attribute\Tagged;
 use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Attribute\BoundTo;
+use Dirthara\Container\Contract\Inspector;
 use Dirthara\Container\Attribute\Singleton;
 use Dirthara\Container\Contract\TagResolver;
 use Dirthara\Container\Attribute\DecoratedBy;
@@ -36,6 +37,9 @@ use Dirthara\Container\Exception\CircularDependencyException;
 use Dirthara\Container\Exception\InvalidRegistrationException;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
+use function sort;
+use function count;
+use function strval;
 use function is_array;
 use function array_map;
 use function is_object;
@@ -50,7 +54,14 @@ use function is_subclass_of;
 use function array_key_exists;
 use function interface_exists;
 
-final class Container implements ContainerInterface, ContainerConfigurator, InstanceFactory, Invoker, Scope, TagResolver
+final class Container implements
+    ContainerInterface,
+    ContainerConfigurator,
+    InstanceFactory,
+    Invoker,
+    Scope,
+    TagResolver,
+    Inspector
 {
     /**
      * @var array<string, Binding>
@@ -73,7 +84,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     private array $contextualBindings = [];
 
     /**
-     * @var array<string, array<string, true>>
+     * @var array<array-key, array<array-key, true>>
      */
     private array $tags = [];
 
@@ -137,6 +148,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $this->instances[Invoker::class] = $this;
         $this->instances[Scope::class] = $this;
         $this->instances[TagResolver::class] = $this;
+        $this->instances[Inspector::class] = $this;
     }
 
     /**
@@ -156,7 +168,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     public function singleton(string $abstract, string|Closure|null $concrete = null): self
     {
-        return $this->register($abstract, $concrete, Lifetime::Shared);
+        return $this->register($abstract, $concrete, Lifetime::Singleton);
     }
 
     /**
@@ -392,6 +404,45 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         ));
     }
 
+    /**
+     * @return list<string>
+     */
+    public function registered(): array
+    {
+        $ids = array_map(strval(...), array_keys($this->scopedInstances + $this->instances + $this->bindings));
+        sort($ids);
+
+        return $ids;
+    }
+
+    /**
+     * @throws InvalidAttributeException
+     */
+    public function describe(string $id): ?EntryDescription
+    {
+        $origin = $this->sourceOf($id);
+
+        if ($origin === null) {
+            return null;
+        }
+
+        [$source, $binding] = $origin;
+        $class = $this->instantiableClass($id);
+        $concrete = $binding?->concrete;
+
+        return new EntryDescription(
+            id: $id,
+            source: $source,
+            lifetime: $binding?->lifetime,
+            concrete: is_string($concrete) ? $concrete : null,
+            factory: $concrete instanceof Closure,
+            lazy: $class !== null && $this->isLazy($class),
+            tags: $this->tagsOf($id),
+            decorators: $this->decoratorClassesOf($id),
+            extenders: count($this->extenders[$id] ?? []),
+        );
+    }
+
     public function has(string $id): bool
     {
         return (
@@ -437,7 +488,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $resolved = $this->resolve($id, $binding ?? $class, [], $this->get(...));
 
         match ($binding?->lifetime) {
-            Lifetime::Shared => $this->instances[$id] = $resolved,
+            Lifetime::Singleton => $this->instances[$id] = $resolved,
             Lifetime::Scoped => $this->scopedInstances[$id] = $resolved,
             default => null,
         };
@@ -658,9 +709,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     {
         $name = $class->getName();
 
-        $this->lazy[$name] ??= $class->getAttributes(Lazy::class) !== [];
-
-        if ($this->lazy[$name] && $this->hasInstanceProperties($class)) {
+        if ($this->isLazy($class) && $this->hasInstanceProperties($class)) {
             return $class->newLazyGhost(function (object $object) use ($class, $parameters): void {
                 $class->getConstructor()?->invokeArgs($object, $this->constructorArguments($class, $parameters));
                 $this->afterBuilding($object);
@@ -701,6 +750,80 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         }
 
         return $value;
+    }
+
+    /**
+     * @param ReflectionClass<object> $class
+     */
+    private function isLazy(ReflectionClass $class): bool
+    {
+        return $this->lazy[$class->getName()] ??= $class->getAttributes(Lazy::class) !== [];
+    }
+
+    /**
+     * @throws InvalidAttributeException
+     *
+     * @return array{EntrySource, Binding|null}|null
+     */
+    private function sourceOf(string $id): ?array
+    {
+        if (array_key_exists($id, $this->scopedInstances)) {
+            return [EntrySource::ScopedInstance, null];
+        }
+
+        if (array_key_exists($id, $this->instances)) {
+            return [EntrySource::Instance, null];
+        }
+
+        if (array_key_exists($id, $this->bindings)) {
+            return [EntrySource::Binding, $this->bindings[$id]];
+        }
+
+        $binding = $this->attributeBinding($id);
+
+        if ($binding !== null) {
+            return [EntrySource::Attribute, $binding];
+        }
+
+        return (
+            $this->instantiableClass($id) === null
+                ? null
+                : [EntrySource::Autowired, new Binding(concrete: $id, lifetime: Lifetime::Transient)]
+        );
+    }
+
+    /**
+     * @throws InvalidAttributeException
+     *
+     * @return list<class-string>
+     */
+    private function decoratorClassesOf(string $id): array
+    {
+        $classes = [];
+
+        foreach ($this->decoratorsOf($id) as [$decorator]) {
+            $classes[] = $decorator;
+        }
+
+        return $classes;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function tagsOf(string $id): array
+    {
+        $tags = [];
+
+        foreach ($this->tags as $tag => $ids) {
+            if (!array_key_exists($id, $ids)) {
+                continue;
+            }
+
+            $tags[] = (string) $tag;
+        }
+
+        return $tags;
     }
 
     /**
@@ -979,7 +1102,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         }
 
         return match (true) {
-            $singleton => Lifetime::Shared,
+            $singleton => Lifetime::Singleton,
             $scoped => Lifetime::Scoped,
             default => Lifetime::Transient,
         };

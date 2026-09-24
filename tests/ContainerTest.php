@@ -19,6 +19,7 @@ use Psr\Container\ContainerInterface;
 use Dirthara\Container\Contract\Scope;
 use PHPUnit\Framework\Attributes\Test;
 use Dirthara\Container\Contract\Invoker;
+use Dirthara\Container\Contract\Inspector;
 use Dirthara\Container\Tests\Fixtures\Suit;
 use Dirthara\Container\Contract\TagResolver;
 use Dirthara\Container\Tests\Fixtures\First;
@@ -66,6 +67,7 @@ final class ContainerTest extends TestCase
         self::assertSame($container, $container->get(Invoker::class));
         self::assertSame($container, $container->get(Scope::class));
         self::assertSame($container, $container->get(TagResolver::class));
+        self::assertSame($container, $container->get(Inspector::class));
     }
 
     #[Test]

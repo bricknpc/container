@@ -31,6 +31,7 @@ The container implements one interface for each part of its work:
 | `Dirthara\Container\Contract\InstanceFactory` | `make()` | [Building a new instance](making-and-calling.md#make-a-new-instance) with some constructor parameters given. |
 | `Dirthara\Container\Contract\Invoker` | `call()` | [Calling a method or a closure](making-and-calling.md#call-a-method-or-a-closure) with its parameters filled in. |
 | `Dirthara\Container\Contract\TagResolver` | `tagged()` | Resolving every entry with a [tag](tags.md). |
+| `Dirthara\Container\Contract\Inspector` | `registered()`, `describe()` | [Finding out](introspection.md) what is registered and where an entry comes from. |
 | `Dirthara\Container\Contract\Scope` | `scopedInstance()`, `resetScope()` | Providing per-request values and [ending a scope](#scope-an-entry). |
 
 Type against the interface that matches what the code does, rather than against `Container`:
