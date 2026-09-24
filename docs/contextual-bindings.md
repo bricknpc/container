@@ -7,8 +7,9 @@ description: Give one class a different dependency, or a value for a parameter, 
 
 ## Give one class something else
 
-A binding with `bind()` applies everywhere. A contextual binding applies only while the container builds the classes it
-names, and says what to give them when their constructor needs something.
+A binding with `bind()` applies everywhere. A contextual binding applies only while the container fills in the
+parameters of the classes it names, and says what to give them when their constructor, or a method called through
+`call()`, needs something.
 
 ```php
 $container->bind(LoggerInterface::class, FileLogger::class);
@@ -30,8 +31,8 @@ and `$container->get(LoggerInterface::class)` is unaffected too.
 
 | Need | Example | Matches |
 | --- | --- | --- |
-| A class or interface | `needs(LoggerInterface::class)` | Every constructor parameter with exactly that type. |
-| A parameter name, prefixed with `$` | `needs('$retries')` | The constructor parameter with that name, whatever its type. |
+| A class or interface | `needs(LoggerInterface::class)` | Every parameter with exactly that type. |
+| A parameter name, prefixed with `$` | `needs('$retries')` | The parameter with that name, whatever its type. |
 
 A parameter name is how a parameter without a class type, such as an `int` or a `string`, gets a value from the
 container. It also singles out one of two parameters that share a type:
@@ -100,11 +101,24 @@ $container->when([Mailer::class, Newsletter::class])
 ```
 
 A contextual binding applies whenever the container builds one of those classes by reading its constructor: when the
-class is autowired, bound to itself, or the target of another binding, such as `bind('mailer', Mailer::class)`. It
-does not apply:
+class is autowired, bound to itself, or the target of another binding, such as `bind('mailer', Mailer::class)`.
 
-- to a class built by a factory, because the factory calls the constructor itself, or
-- to a subclass of a class it names, unless the subclass is named as well.
+It also applies when [`call()`](making-and-calling.md#call-a-method-or-a-closure) calls a method of one of those
+classes: a method on an object, a static method, or `__invoke()` of an invokable class. That is how a controller
+receives something else in its actions than the rest of the application does:
+
+```php
+$container->when(ReportController::class)->needs(ExporterInterface::class)->give(CsvExporter::class);
+
+$container->call([$reportController, 'export']); // export(ExporterInterface $exporter) receives a CsvExporter
+```
+
+It does not apply:
+
+- to a class built by a factory, because the factory calls the constructor itself,
+- to a closure or a function passed to `call()`, because it belongs to no class, or
+- to a subclass of a class it names, unless the subclass is named as well. For a method, the class is the one the
+  callable names, such as the class of the object, not the class that declares the method.
 
 A contextual binding takes precedence over the container's entries and over the parameter's default value, including
 when it gives `null` with `giveValue(null)`.

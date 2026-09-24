@@ -18,10 +18,10 @@ An autowired class is built again on every `get()`, unless it is registered with
 
 The container reads the constructor and resolves each parameter in turn, using the first rule that applies:
 
-1. The parameter was given by name to [`make()`](making-and-calling.md): the given value. This applies only to the
-   class being made, not to its dependencies.
-2. A [contextual binding](contextual-bindings.md) for the class being built names the parameter, or its class or
-   interface type: what that binding gives.
+1. The parameter was given by name to [`make()` or `call()`](making-and-calling.md): the given value. This applies
+   only to the class being made or the callable being called, not to their dependencies.
+2. A [contextual binding](contextual-bindings.md) for the class being built, or for the class of the method being
+   called, names the parameter, or its class or interface type: what that binding gives.
 3. The parameter has a [`#[Tagged]`](tags.md#inject-a-tag) attribute: every entry with that tag.
 4. The parameter has an [`#[Inject]`](attributes.md#inject-a-named-entry) attribute, and the container has the entry it
    names: that entry, resolved with `get()`. The parameter's type is not looked up, so when the entry is missing, the

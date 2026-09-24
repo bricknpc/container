@@ -44,11 +44,11 @@ final readonly class CallableResolver
     public function resolve(array|string|object $callable): ResolvedCallable
     {
         if ($callable instanceof Closure) {
-            return new ResolvedCallable(new ReflectionFunction($callable), $callable, 'Closure');
+            return new ResolvedCallable(new ReflectionFunction($callable), $callable, 'Closure', null);
         }
 
         if (is_string($callable) && function_exists($callable)) {
-            return new ResolvedCallable(new ReflectionFunction($callable), $callable(...), $callable);
+            return new ResolvedCallable(new ReflectionFunction($callable), $callable(...), $callable, null);
         }
 
         if (is_array($callable)) {
@@ -88,11 +88,11 @@ final readonly class CallableResolver
         }
 
         if ($reflection->isStatic()) {
-            return new ResolvedCallable($reflection, $reflection->getClosure(), $name);
+            return new ResolvedCallable($reflection, $reflection->getClosure(), $name, $class);
         }
 
         $instance = is_object($target) ? $target : ($this->instanceOf)($class);
 
-        return new ResolvedCallable($reflection, $reflection->getClosure($instance), $name);
+        return new ResolvedCallable($reflection, $reflection->getClosure($instance), $name, $class);
     }
 }

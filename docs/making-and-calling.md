@@ -103,10 +103,9 @@ $container->bind(SalesReport::class, static function (ContainerInterface $contai
 
 ## Call a method or a closure
 
-`call()` calls something and fills in its parameters the way the container fills in a constructor: from the entry an
-[`#[Inject]`](attributes.md#inject-a-named-entry) attribute names, from the container for class types, then from
-defaults, then `null`. Like `make()`, it takes parameters by name as its second argument,
-which take precedence.
+`call()` calls something and fills in its parameters by the same rules as a constructor's; see
+[how each parameter is filled in](autowiring.md#how-each-parameter-is-filled-in). Like `make()`, it takes parameters by
+name as its second argument, which take precedence.
 
 ```php
 $report = $container->call([$controller, 'show'], ['id' => 7]);
@@ -130,5 +129,6 @@ parameter throws one of this package's exceptions.
   `__invoke()` throw an `InvalidCallableException::notCallable()`.
 - A parameter that cannot be filled in throws a `ResolutionException` whose `target` names the method, such as
   `ReportController::show`, or `Closure` for a closure.
-- [Contextual bindings](contextual-bindings.md) apply to constructors only. `when(ReportController::class)` does not
-  change what its methods receive through `call()`.
+- [Contextual bindings](contextual-bindings.md) for the class of a method apply to its parameters, so
+  `when(ReportController::class)` changes what its methods receive through `call()`. They do not apply to a closure or
+  a function.

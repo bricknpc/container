@@ -1334,12 +1334,27 @@ final class ContainerTest extends TestCase
     }
 
     #[Test]
-    public function it_does_not_apply_contextual_bindings_to_a_call(): void
+    public function it_applies_the_contextual_bindings_of_the_class_to_a_method_call(): void
     {
-        $container = new Container()->singleton(Service::class, ServiceImplementation::class);
+        $container = new Container()->bind(Service::class, ServiceImplementation::class);
         $container->when(Handler::class)->needs(Service::class)->give(OtherServiceImplementation::class);
+        $container->when(Handler::class)->needs('$count')->giveValue(3);
+        $container->when(Handler::class)->needs('$name')->giveValue('static');
 
-        self::assertSame([$container->get(Service::class), 1], $container->call([Handler::class, 'handle']));
+        self::assertEquals([new OtherServiceImplementation(), 3], $container->call([new Handler(), 'handle']));
+        self::assertEquals([new OtherServiceImplementation(), 3], $container->call(Handler::class . '::handle'));
+        self::assertSame('static:' . Plain::class, $container->call([Handler::class, 'describe']));
+    }
+
+    #[Test]
+    public function it_applies_the_contextual_bindings_of_an_invokable_class_but_not_to_a_closure(): void
+    {
+        $plain = new Plain();
+        $container = new Container();
+        $container->when(Handler::class)->needs(Plain::class)->giveValue($plain);
+
+        self::assertSame($plain, $container->call(Handler::class));
+        self::assertNotSame($plain, $container->call(static fn(Plain $other): Plain => $other));
     }
 
     #[Test]

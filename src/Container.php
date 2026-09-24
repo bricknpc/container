@@ -422,7 +422,7 @@ final class Container implements
             $resolved->name,
             $resolved->reflection->getParameters(),
             $parameters,
-            null,
+            $resolved->class,
         ));
     }
 
