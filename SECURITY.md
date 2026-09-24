@@ -48,3 +48,7 @@ attributes and its factories.
 Bugs in PHP or third-party dependencies should be reported upstream, and so should an issue in a
 [delegate container](docs/delegates.md), whose entries this package returns as they are. Application code and the
 sensitivity of data an application chooses to store are the application's responsibility.
+
+A container has one scope, shared by everything that uses it, and the
+[documentation](docs/getting-started.md#scope-an-entry) rules out handling requests concurrently with one container,
+such as in Fibers. Scoped values that reach another request that way are out of scope.

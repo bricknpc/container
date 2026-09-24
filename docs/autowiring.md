@@ -115,3 +115,7 @@ The container does not wait for a Fiber that is building a singleton or a scoped
 that has not been built yet, and its factory suspends, both build it, and the one that finishes last replaces the other's
 value. Build such entries before the Fibers start, or keep their factories from suspending.
 :::
+
+Only the circular dependency tracking is kept per Fiber. Everything else, including the
+[scope](getting-started.md#scope-an-entry), is shared by every Fiber that uses the container, so concurrent requests
+cannot each have their own scoped values in one container.

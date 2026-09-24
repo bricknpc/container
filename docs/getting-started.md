@@ -194,6 +194,13 @@ ends. Make everything that depends on a scoped entry scoped as well, or give it 
 when it is needed.
 :::
 
+:::danger
+There is one scope per container, not one per request or per [Fiber](autowiring.md#fibers). A scoped instance or a
+value a `scoped()` entry built is visible to everything that uses the container, and `resetScope()` ends the scope for
+all of them. Handle one request at a time per container: a server that handles requests concurrently in Fibers and
+shares one container lets one request receive another's scoped values, such as its `Request` or its logged-in user.
+:::
+
 ## Lock the container
 
 Once an application has registered everything it needs, `lock()` stops the container from accepting more. After it,
