@@ -96,6 +96,7 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `ResolutionException::unresolvableContextualBinding()` | `class`, `need`, `concrete` |
 | `ResolutionException::contextualFactoryFailed()` | `class`, `need`, and `exceptionClass` |
 | `ResolutionException::extenderFailed()` | `id`, and `exceptionClass`: the class of the exception the extender threw |
+| `ResolutionException::delegateFailed()` | `id`, `delegate`: the class of the delegate container, and `exceptionClass` |
 | `ResolutionException::callbackFailed()` | `type`: the type the callback is for, `class`: the class of the built object, and `exceptionClass` |
 | `InvalidContextualBindingException::notAClass()` | `class` |
 | `InvalidContextualBindingException::invalidNeed()` | `need` |

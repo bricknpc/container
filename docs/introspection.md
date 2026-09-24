@@ -38,8 +38,8 @@ $description->decorators; // [CachingUserRepository::class]
 | --- | --- | --- |
 | `id` | `string` | The identifier that was described. |
 | `source` | `EntrySource` | Where the entry comes from; see below. |
-| `lifetime` | `?Lifetime` | `Lifetime::Transient`, `Lifetime::Singleton`, or `Lifetime::Scoped`, and `null` for an instance. |
-| `concrete` | `?string` | The entry or class it resolves to, and `null` for a factory or an instance. |
+| `lifetime` | `?Lifetime` | `Lifetime::Transient`, `Lifetime::Singleton`, or `Lifetime::Scoped`, and `null` for an instance or a delegate. |
+| `concrete` | `?string` | The entry or class it resolves to, and `null` for a factory, an instance, or a delegate. |
 | `factory` | `bool` | Whether a factory builds it. |
 | `lazy` | `bool` | Whether the identifier is a class the container builds [lazily](lazy.md). |
 | `tags` | `list<string>` | The [tags](tags.md) it has, in the order they were first added. |
@@ -53,6 +53,7 @@ $description->decorators; // [CachingUserRepository::class]
 | `ScopedInstance` | A value registered with `scopedInstance()` for the current scope. |
 | `Instance` | A value registered with `instance()`. |
 | `Binding` | Registered with `bind()`, `singleton()`, or `scoped()`. |
+| `Delegate` | Found in a [delegate container](delegates.md). |
 | `Attribute` | Declared with `#[BoundTo]`, `#[Singleton]`, or `#[Scoped]` on the type. |
 | `Autowired` | An instantiable class nothing is registered for. |
 

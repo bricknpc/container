@@ -22,6 +22,7 @@ use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Contract\Inspector;
 use Dirthara\Container\Tests\Fixtures\Suit;
 use Dirthara\Container\Contract\TagResolver;
+use Dirthara\Container\Tests\Fixtures\Clock;
 use Dirthara\Container\Tests\Fixtures\First;
 use Dirthara\Container\Tests\Fixtures\Plain;
 use Dirthara\Container\Tests\Fixtures\Mailer;
@@ -35,10 +36,12 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Tests\Fixtures\SelfTyped;
 use Dirthara\Container\Tests\Fixtures\DefinedLate;
+use Dirthara\Container\Tests\Fixtures\FrozenClock;
 use Dirthara\Container\Tests\Fixtures\ParentTyped;
 use Dirthara\Container\Tests\Fixtures\NeedsService;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
+use Dirthara\Container\Tests\Fixtures\ArrayContainer;
 use Dirthara\Container\Tests\Fixtures\RequiresNumber;
 use Dirthara\Container\Contract\ContainerConfigurator;
 use Dirthara\Container\Tests\Fixtures\AbstractService;
@@ -509,6 +512,105 @@ final class ContainerTest extends TestCase
         $this->expectException(ContainerLockedException::class);
 
         $container->afterResolving(Plain::class, static fn(): null => null);
+    }
+
+    #[Test]
+    public function it_resolves_an_entry_from_the_first_delegate_that_has_it(): void
+    {
+        $first = new ArrayContainer(['config' => ['from' => 'first']]);
+        $second = new ArrayContainer(['config' => ['from' => 'second'], 'other' => 'second']);
+        $container = new Container()
+            ->delegate($first)
+            ->delegate($second);
+
+        self::assertTrue($container->has('config'));
+        self::assertSame(['from' => 'first'], $container->get('config'));
+        self::assertSame('second', $container->get('other'));
+    }
+
+    #[Test]
+    public function it_prefers_its_own_registrations_but_asks_delegates_before_attributes_and_autowiring(): void
+    {
+        $plain = new Plain();
+        $frozen = new FrozenClock();
+        $container = new Container()
+            ->bind('config', static fn(): string => 'own')
+            ->delegate(new ArrayContainer(['config' => 'delegated', Plain::class => $plain, Clock::class => $frozen]));
+
+        self::assertSame('own', $container->get('config'));
+        self::assertSame($plain, $container->get(Plain::class));
+        self::assertSame($frozen, $container->get(Clock::class));
+    }
+
+    #[Test]
+    public function it_neither_keeps_nor_extends_what_a_delegate_returns_and_never_makes_through_one(): void
+    {
+        $container = new Container()
+            ->delegate(new ArrayContainer([
+                Plain::class => static fn(): Plain => new Plain(),
+                'config' => 'delegated',
+            ]))
+            ->extend(Plain::class, static fn(): stdClass => new stdClass());
+
+        $first = $container->get(Plain::class);
+
+        self::assertInstanceOf(Plain::class, $first);
+        self::assertNotSame($first, $container->get(Plain::class));
+        self::assertInstanceOf(stdClass::class, $container->make(Plain::class));
+
+        $this->expectException(ResolutionException::class);
+
+        $container->make('config');
+    }
+
+    #[Test]
+    public function it_wraps_what_a_delegate_throws(): void
+    {
+        $previous = new RuntimeException('failed');
+        $delegate = new ArrayContainer(['broken' => static fn(): never => throw $previous]);
+        $container = new Container()->delegate($delegate);
+
+        try {
+            $container->get('broken');
+            self::fail('Expected a ResolutionException.');
+        } catch (ResolutionException $exception) {
+            self::assertSame(
+                'The delegate container '
+                . ArrayContainer::class
+                . ' failed to resolve entry "broken" with '
+                . 'RuntimeException.',
+                $exception->getMessage(),
+            );
+            self::assertSame($previous, $exception->getPrevious());
+            self::assertSame(
+                ['id' => 'broken', 'delegate' => ArrayContainer::class, 'exceptionClass' => RuntimeException::class],
+                $exception->context,
+            );
+        }
+    }
+
+    #[Test]
+    public function it_does_not_loop_through_a_delegate_that_delegates_back_to_it(): void
+    {
+        $container = new Container();
+        $container->delegate(new ArrayContainer([], $container));
+
+        self::assertFalse($container->has('missing'));
+
+        $this->expectException(EntryNotFoundException::class);
+
+        $container->get('missing');
+    }
+
+    #[Test]
+    public function it_refuses_a_delegate_once_it_is_locked(): void
+    {
+        $container = new Container();
+        $container->lock();
+
+        $this->expectException(ContainerLockedException::class);
+
+        $container->delegate(new ArrayContainer([]));
     }
 
     #[Test]

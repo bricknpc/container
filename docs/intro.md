@@ -10,12 +10,14 @@ Dirthara Container is a dependency injection container that implements the
 it, and code written against the interface can swap it for another implementation. Registering entries has an
 interface of its own, `ContainerConfigurator`; see [depending on the interfaces](getting-started.md#depend-on-the-interfaces).
 
-The container resolves an entry from one of three sources, checked in this order:
+The container resolves an entry from the first of these sources that has it:
 
 | Source | Registered with | Resolves to |
 | --- | --- | --- |
 | Instance | `instance()` or `scopedInstance()` | The value that was registered, every time, or until the scope is reset. |
 | Binding | `bind()`, `singleton()`, or `scoped()` | A factory's result, another entry, or a class, built on each request, once, or once per scope. |
+| [Delegate](delegates.md) | `delegate()` | What another PSR-11 container returns for the identifier. |
+| [Attribute](attributes.md) | `#[BoundTo]`, `#[Singleton]`, or `#[Scoped]` on the type | A class, as a binding with the same attributes would. |
 | Autowiring | Nothing | Any instantiable class, built with its constructor dependencies resolved from the container. |
 
 ```php

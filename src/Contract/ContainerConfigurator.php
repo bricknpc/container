@@ -40,6 +40,11 @@ interface ContainerConfigurator
     public function instance(string $abstract, mixed $instance): self;
 
     /**
+     * @throws ContainerLockedException
+     */
+    public function delegate(ContainerInterface $container): self;
+
+    /**
      * @param Closure(mixed, ContainerInterface): mixed $extender
      *
      * @throws ContainerLockedException

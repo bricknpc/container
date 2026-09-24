@@ -148,4 +148,18 @@ final class ResolutionException extends RuntimeException implements ContainerExc
             context: ['type' => $type, 'class' => $class, 'exceptionClass' => $previous::class],
         );
     }
+
+    public static function delegateFailed(string $id, string $delegate, Throwable $previous): self
+    {
+        return new self(
+            message: sprintf(
+                'The delegate container %s failed to resolve entry "%s" with %s.',
+                self::printable($delegate),
+                self::printable($id),
+                $previous::class,
+            ),
+            previous: $previous,
+            context: ['id' => $id, 'delegate' => $delegate, 'exceptionClass' => $previous::class],
+        );
+    }
 }

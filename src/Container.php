@@ -114,6 +114,16 @@ final class Container implements
     private array $resolving = [];
 
     /**
+     * @var list<ContainerInterface>
+     */
+    private array $delegates = [];
+
+    /**
+     * @var array<string, true>
+     */
+    private array $consultingDelegates = [];
+
+    /**
      * @var WeakMap<Fiber<mixed, mixed, mixed, mixed>, array<string, true>>
      */
     private readonly WeakMap $resolvingInFibers;
@@ -210,6 +220,18 @@ final class Container implements
     public function lock(): void
     {
         $this->locked = true;
+    }
+
+    /**
+     * @throws ContainerLockedException
+     */
+    public function delegate(ContainerInterface $container): self
+    {
+        $this->assertConfigurable('delegate');
+
+        $this->delegates[] = $container;
+
+        return $this;
     }
 
     /**
@@ -371,7 +393,7 @@ final class Container implements
         $class = $binding === null ? $this->instantiableClass($id) : null;
 
         if ($binding === null && $class === null) {
-            throw array_key_exists($id, $this->instances) || array_key_exists($id, $this->scopedInstances)
+            throw $this->holds($id) || $this->delegateFor($id) !== null
                 ? ResolutionException::notBuildable($id)
                 : EntryNotFoundException::forId($id);
         }
@@ -449,6 +471,7 @@ final class Container implements
             array_key_exists($id, $this->scopedInstances)
             || array_key_exists($id, $this->instances)
             || array_key_exists($id, $this->bindings)
+            || $this->delegateFor($id) !== null
             || $this->hasAttributeBinding($id)
             || $this->instantiableClass($id) !== null
         );
@@ -477,6 +500,19 @@ final class Container implements
      */
     private function resolveEntry(string $id): mixed
     {
+        $delegate = array_key_exists($id, $this->bindings) ? null : $this->delegateFor($id);
+
+        if ($delegate !== null) {
+            return $this->tracked($id, fn(): mixed => $this->guard(
+                static fn(): mixed => $delegate->get($id),
+                static fn(Exception $exception): ResolutionException => ResolutionException::delegateFailed(
+                    $id,
+                    $delegate::class,
+                    $exception,
+                ),
+            ));
+        }
+
         $binding = $this->bindingFor($id);
         $class = $binding === null ? $this->instantiableClass($id) : null;
 
@@ -510,6 +546,21 @@ final class Container implements
         array $parameters,
         Closure $resolveAlias,
     ): mixed {
+        return $this->tracked($id, fn(): mixed => $this->decorate(
+            $id,
+            $target instanceof Binding
+                ? $this->resolveBinding($id, $target, $parameters, $resolveAlias)
+                : $this->build($target, $parameters),
+        ));
+    }
+
+    /**
+     * @param Closure(): mixed $resolve
+     *
+     * @throws CircularDependencyException
+     */
+    private function tracked(string $id, Closure $resolve): mixed
+    {
         $fiber = Fiber::getCurrent();
         $resolving = $fiber === null ? $this->resolving : $this->resolvingInFibers[$fiber] ?? [];
 
@@ -520,14 +571,35 @@ final class Container implements
         $this->track($fiber, [...$resolving, $id => true]);
 
         try {
-            return $this->decorate(
-                $id,
-                $target instanceof Binding
-                    ? $this->resolveBinding($id, $target, $parameters, $resolveAlias)
-                    : $this->build($target, $parameters),
-            );
+            return $resolve();
         } finally {
             $this->track($fiber, $resolving);
+        }
+    }
+
+    private function holds(string $id): bool
+    {
+        return array_key_exists($id, $this->instances) || array_key_exists($id, $this->scopedInstances);
+    }
+
+    private function delegateFor(string $id): ?ContainerInterface
+    {
+        if (array_key_exists($id, $this->consultingDelegates)) {
+            return null;
+        }
+
+        $this->consultingDelegates[$id] = true;
+
+        try {
+            foreach ($this->delegates as $delegate) {
+                if ($delegate->has($id)) {
+                    return $delegate;
+                }
+            }
+
+            return null;
+        } finally {
+            unset($this->consultingDelegates[$id]);
         }
     }
 
@@ -767,6 +839,14 @@ final class Container implements
      */
     private function sourceOf(string $id): ?array
     {
+        return $this->registeredSourceOf($id) ?? $this->unregisteredSourceOf($id);
+    }
+
+    /**
+     * @return array{EntrySource, Binding|null}|null
+     */
+    private function registeredSourceOf(string $id): ?array
+    {
         if (array_key_exists($id, $this->scopedInstances)) {
             return [EntrySource::ScopedInstance, null];
         }
@@ -779,6 +859,16 @@ final class Container implements
             return [EntrySource::Binding, $this->bindings[$id]];
         }
 
+        return $this->delegateFor($id) === null ? null : [EntrySource::Delegate, null];
+    }
+
+    /**
+     * @throws InvalidAttributeException
+     *
+     * @return array{EntrySource, Binding}|null
+     */
+    private function unregisteredSourceOf(string $id): ?array
+    {
         $binding = $this->attributeBinding($id);
 
         if ($binding !== null) {

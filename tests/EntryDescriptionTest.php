@@ -22,6 +22,7 @@ use Dirthara\Container\Tests\Fixtures\Formatter;
 use Dirthara\Container\Tests\Fixtures\Repository;
 use Dirthara\Container\Tests\Fixtures\LazyService;
 use Dirthara\Container\Tests\Fixtures\SystemClock;
+use Dirthara\Container\Tests\Fixtures\ArrayContainer;
 use Dirthara\Container\Contract\ContainerConfigurator;
 use Dirthara\Container\Tests\Fixtures\CachingRepository;
 use Dirthara\Container\Tests\Fixtures\LoggingRepository;
@@ -98,6 +99,18 @@ final class EntryDescriptionTest extends TestCase
         self::assertSame(Lifetime::Scoped, $factory?->lifetime);
         self::assertNull($factory?->concrete);
         self::assertTrue($factory?->factory);
+    }
+
+    #[Test]
+    public function it_describes_an_entry_a_delegate_has(): void
+    {
+        $container = new Container()->delegate(new ArrayContainer([Clock::class => new SystemClock()]));
+
+        $clock = $container->describe(Clock::class);
+
+        self::assertSame(EntrySource::Delegate, $clock?->source);
+        self::assertNull($clock?->lifetime);
+        self::assertNull($clock?->concrete);
     }
 
     #[Test]
