@@ -33,6 +33,7 @@ try {
 | `ContainerLockedException` | `RuntimeException` | | A method of `ContainerConfigurator` is called after [`lock()`](getting-started.md#lock-the-container). |
 | `InvalidContextualBindingException` | `InvalidArgumentException` | | `when()` names something that is not a class, or `needs()` something that is neither a class or interface nor a parameter name. |
 | `InvalidAttributeException` | `InvalidArgumentException` | | An [attribute](attributes.md) on the type being resolved is used incorrectly. |
+| `InvalidRegistrationException` | `InvalidArgumentException` | | A registration names something it cannot apply to, such as `lazy()` for an interface. |
 | `InvalidCallableException` | `InvalidArgumentException` | | `call()` is given something that is not a closure, a function, a public method, or an invokable class. |
 
 All exception classes are `final`; catch them by class or by `ContainerException`.
@@ -103,6 +104,7 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | `InvalidAttributeException::unknownClass()` | `class` |
 | `InvalidAttributeException::notADecorator()` | `class`, and `decorator`: the class its `#[DecoratedBy]` names |
 | `InvalidAttributeException::decoratorWithoutParameter()` | `class`, `decorator` |
+| `InvalidRegistrationException::notALazyClass()` | `class` |
 | `ContainerLockedException::cannotRegister()` | `id` |
 | `ContainerLockedException::cannotAddContextualBinding()` | `classes`: the classes given to `when()` |
 | `ContainerLockedException::cannotConfigure()` | `method`: the method that was called, such as `tag` |

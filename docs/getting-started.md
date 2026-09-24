@@ -27,7 +27,7 @@ The container implements one interface for each part of its work:
 | Interface | Methods | Use it for |
 | --- | --- | --- |
 | `Psr\Container\ContainerInterface` | `get()`, `has()` | Resolving entries. |
-| `Dirthara\Container\Contract\ContainerConfigurator` | `bind()`, `singleton()`, `scoped()`, `instance()`, `when()`, `extend()`, `tag()`, `tagByAttribute()` | Registering entries, [contextual bindings](contextual-bindings.md), [decorators](decorators.md), and [tags](tags.md). |
+| `Dirthara\Container\Contract\ContainerConfigurator` | `bind()`, `singleton()`, `scoped()`, `instance()`, `when()`, `extend()`, `lazy()`, `tag()`, `tagByAttribute()` | Registering entries, [contextual bindings](contextual-bindings.md), [decorators](decorators.md), [lazy services](lazy.md), and [tags](tags.md). |
 | `Dirthara\Container\Contract\InstanceFactory` | `make()` | [Building a new instance](making-and-calling.md#make-a-new-instance) with some constructor parameters given. |
 | `Dirthara\Container\Contract\Invoker` | `call()` | [Calling a method or a closure](making-and-calling.md#call-a-method-or-a-closure) with its parameters filled in. |
 | `Dirthara\Container\Contract\TagResolver` | `tagged()` | Resolving every entry with a [tag](tags.md). |

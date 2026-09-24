@@ -14,6 +14,7 @@ use ReflectionNamedType;
 use ReflectionParameter;
 use Dirthara\Container\Attribute\Tag;
 use Psr\Container\ContainerInterface;
+use Dirthara\Container\Attribute\Lazy;
 use Dirthara\Container\Contract\Scope;
 use Dirthara\Container\Attribute\Inject;
 use Dirthara\Container\Attribute\Scoped;
@@ -32,6 +33,7 @@ use Dirthara\Container\Exception\ContainerLockedException;
 use Dirthara\Container\Exception\InvalidCallableException;
 use Dirthara\Container\Exception\InvalidAttributeException;
 use Dirthara\Container\Exception\CircularDependencyException;
+use Dirthara\Container\Exception\InvalidRegistrationException;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
 use function is_array;
@@ -83,6 +85,11 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @var array<string, list<array{class-string, string}>>
      */
     private array $decorators = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    private array $lazy = [];
 
     /**
      * @var array<string, true>
@@ -197,6 +204,23 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $this->assertConfigurable('extend');
 
         $this->extenders[$abstract][] = $extender;
+
+        return $this;
+    }
+
+    /**
+     * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
+     */
+    public function lazy(string $class): self
+    {
+        $this->assertConfigurable('lazy');
+
+        if ($this->instantiableClass($class) === null) {
+            throw InvalidRegistrationException::notALazyClass($class);
+        }
+
+        $this->lazy[$class] = true;
 
         return $this;
     }
@@ -614,12 +638,50 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     {
         $name = $class->getName();
 
-        return $class->newInstance(...$this->resolveArguments(
+        $this->lazy[$name] ??= $class->getAttributes(Lazy::class) !== [];
+
+        if ($this->lazy[$name] && $this->hasInstanceProperties($class)) {
+            return $class->newLazyGhost(function (object $object) use ($class, $parameters): void {
+                $class->getConstructor()?->invokeArgs($object, $this->constructorArguments($class, $parameters));
+            });
+        }
+
+        return $class->newInstance(...$this->constructorArguments($class, $parameters));
+    }
+
+    /**
+     * @param ReflectionClass<object> $class
+     */
+    private function hasInstanceProperties(ReflectionClass $class): bool
+    {
+        foreach ($class->getProperties() as $property) {
+            if (!$property->isStatic()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param ReflectionClass<object> $class
+     * @param array<string, mixed> $parameters
+     *
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     *
+     * @return list<mixed>
+     */
+    private function constructorArguments(ReflectionClass $class, array $parameters): array
+    {
+        $name = $class->getName();
+
+        return $this->resolveArguments(
             $name,
             $this->constructorParameters[$name] ??= $class->getConstructor()?->getParameters() ?? [],
             $parameters,
             $name,
-        ));
+        );
     }
 
     /**

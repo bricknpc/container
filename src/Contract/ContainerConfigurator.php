@@ -8,6 +8,7 @@ use Closure;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Exception\ContainerLockedException;
 use Dirthara\Container\Exception\InvalidAttributeException;
+use Dirthara\Container\Exception\InvalidRegistrationException;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
 interface ContainerConfigurator
@@ -44,6 +45,12 @@ interface ContainerConfigurator
      * @throws ContainerLockedException
      */
     public function extend(string $abstract, Closure $extender): self;
+
+    /**
+     * @throws ContainerLockedException
+     * @throws InvalidRegistrationException
+     */
+    public function lazy(string $class): self;
 
     /**
      * @param string|list<string> $abstracts
