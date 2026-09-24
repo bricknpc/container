@@ -103,8 +103,9 @@ $container->bind(SalesReport::class, static function (ContainerInterface $contai
 
 ## Call a method or a closure
 
-`call()` calls something and fills in its parameters the way the container fills in a constructor: from the container
-for class types, then from defaults, then `null`. Like `make()`, it takes parameters by name as its second argument,
+`call()` calls something and fills in its parameters the way the container fills in a constructor: from the entry an
+[`#[Inject]`](attributes.md#inject-a-named-entry) attribute names, from the container for class types, then from
+defaults, then `null`. Like `make()`, it takes parameters by name as its second argument,
 which take precedence.
 
 ```php

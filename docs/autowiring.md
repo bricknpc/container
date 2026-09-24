@@ -11,7 +11,8 @@ The container autowires any identifier that is not registered and names an insta
 abstract class, an enum, or a class with a constructor that is not public. It also autowires a class that is bound to
 itself with `bind(Mailer::class)` or `singleton(Mailer::class)`.
 
-An autowired class is built again on every `get()`, unless it is registered with `singleton()`.
+An autowired class is built again on every `get()`, unless it is registered with `singleton()` or `scoped()`, or has a
+[lifetime attribute](attributes.md#give-a-type-a-lifetime).
 
 ## How each parameter is filled in
 
@@ -21,11 +22,14 @@ The container reads the constructor and resolves each parameter in turn, using t
    class being made, not to its dependencies.
 2. A [contextual binding](contextual-bindings.md) for the class being built names the parameter, or its class or
    interface type: what that binding gives.
-3. The parameter has a class or interface type, and the container has an entry for it: that entry, resolved with
+3. The parameter has an [`#[Inject]`](attributes.md#inject-a-named-entry) attribute, and the container has the entry it
+   names: that entry, resolved with `get()`. The parameter's type is not looked up, so when the entry is missing, the
+   parameter continues with rule 5.
+4. The parameter has a class or interface type, and the container has an entry for it: that entry, resolved with
    `get()`.
-4. The parameter has a default value: the default.
-5. The parameter accepts `null`: `null`.
-6. Otherwise, resolution fails with a `ResolutionException`.
+5. The parameter has a default value: the default.
+6. The parameter accepts `null`: `null`.
+7. Otherwise, resolution fails with a `ResolutionException`.
 
 A variadic parameter is left empty, unless a value for it is given to `make()`.
 

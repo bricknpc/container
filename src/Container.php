@@ -14,6 +14,7 @@ use ReflectionNamedType;
 use ReflectionParameter;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Contract\Scope;
+use Dirthara\Container\Attribute\Inject;
 use Dirthara\Container\Attribute\Scoped;
 use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Attribute\BoundTo;
@@ -535,14 +536,16 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     private function resolveParameter(string $target, ReflectionParameter $parameter, ?string $contextualClass): mixed
     {
-        $dependency = $this->dependencyOf($parameter);
+        $type = $this->dependencyOf($parameter);
         $contextual = $contextualClass === null
             ? null
-            : $this->contextualBindingFor($contextualClass, $parameter->getName(), $dependency);
+            : $this->contextualBindingFor($contextualClass, $parameter->getName(), $type);
 
         if ($contextualClass !== null && $contextual !== null) {
             return $this->resolveContextualBinding($contextualClass, $contextual);
         }
+
+        $dependency = $this->injectedEntry($parameter) ?? $type;
 
         if ($dependency !== null && $this->has($dependency)) {
             return $this->get($dependency);
@@ -699,6 +702,13 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     private function isSubtype(string $class, string $of): bool
     {
         return $class === $of || is_subclass_of($class, $of);
+    }
+
+    private function injectedEntry(ReflectionParameter $parameter): ?string
+    {
+        $inject = $parameter->getAttributes(Inject::class)[0] ?? null;
+
+        return $inject?->newInstance()->id;
     }
 
     private function dependencyOf(ReflectionParameter $parameter): ?string
