@@ -47,6 +47,13 @@ interface ContainerConfigurator
     public function extend(string $abstract, Closure $extender): self;
 
     /**
+     * @param Closure(object, ContainerInterface): mixed $callback
+     *
+     * @throws ContainerLockedException
+     */
+    public function afterResolving(string $type, Closure $callback): self;
+
+    /**
      * @throws ContainerLockedException
      * @throws InvalidRegistrationException
      */

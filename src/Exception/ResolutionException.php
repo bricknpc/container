@@ -134,4 +134,18 @@ final class ResolutionException extends RuntimeException implements ContainerExc
             context: ['id' => $id, 'exceptionClass' => $previous::class],
         );
     }
+
+    public static function callbackFailed(string $type, string $class, Throwable $previous): self
+    {
+        return new self(
+            message: sprintf(
+                'A callback for "%s" failed with %s after building "%s".',
+                self::printable($type),
+                $previous::class,
+                self::printable($class),
+            ),
+            previous: $previous,
+            context: ['type' => $type, 'class' => $class, 'exceptionClass' => $previous::class],
+        );
+    }
 }

@@ -36,6 +36,23 @@ final class LazyTest extends TestCase
     }
 
     #[Test]
+    public function it_calls_the_callbacks_when_a_lazy_object_is_initialized(): void
+    {
+        $recorder = new Recorder();
+        $container = new Container()
+            ->instance(Recorder::class, $recorder)
+            ->afterResolving(LazyService::class, static function (object $lazy) use ($recorder): void {
+                $recorder->calls->append('callback');
+            });
+
+        $lazy = $container->get(LazyService::class);
+
+        self::assertSame([], $recorder->calls->getArrayCopy());
+        self::assertSame(1, $lazy->number);
+        self::assertSame([LazyService::class, 'callback'], $recorder->calls->getArrayCopy());
+    }
+
+    #[Test]
     public function it_passes_the_parameters_given_to_make_to_the_lazy_constructor(): void
     {
         $lazy = new Container()->make(LazyService::class, ['number' => 5]);

@@ -38,6 +38,7 @@ use Dirthara\Container\Exception\InvalidContextualBindingException;
 
 use function is_array;
 use function array_map;
+use function is_object;
 use function is_string;
 use function array_flip;
 use function array_keys;
@@ -90,6 +91,11 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @var array<string, bool>
      */
     private array $lazy = [];
+
+    /**
+     * @var list<array{string, Closure(object, ContainerInterface): mixed}>
+     */
+    private array $callbacks = [];
 
     /**
      * @var array<string, true>
@@ -204,6 +210,20 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $this->assertConfigurable('extend');
 
         $this->extenders[$abstract][] = $extender;
+
+        return $this;
+    }
+
+    /**
+     * @param Closure(object, ContainerInterface): mixed $callback
+     *
+     * @throws ContainerLockedException
+     */
+    public function afterResolving(string $type, Closure $callback): self
+    {
+        $this->assertConfigurable('afterResolving');
+
+        $this->callbacks[] = [$type, $callback];
 
         return $this;
     }
@@ -493,13 +513,13 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $concrete = $binding->concrete;
 
         if ($concrete instanceof Closure) {
-            return $this->guard(
+            return $this->afterBuilding($this->guard(
                 fn(): mixed => $concrete($this, $parameters),
                 static fn(Exception $exception): ResolutionException => ResolutionException::factoryFailed(
                     $id,
                     $exception,
                 ),
-            );
+            ));
         }
 
         if ($concrete === $id) {
@@ -643,10 +663,44 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         if ($this->lazy[$name] && $this->hasInstanceProperties($class)) {
             return $class->newLazyGhost(function (object $object) use ($class, $parameters): void {
                 $class->getConstructor()?->invokeArgs($object, $this->constructorArguments($class, $parameters));
+                $this->afterBuilding($object);
             });
         }
 
-        return $class->newInstance(...$this->constructorArguments($class, $parameters));
+        return $this->afterBuilding($class->newInstance(...$this->constructorArguments($class, $parameters)));
+    }
+
+    /**
+     * @template T
+     *
+     * @param T $value
+     *
+     * @throws ResolutionException
+     *
+     * @return T
+     */
+    private function afterBuilding(mixed $value): mixed
+    {
+        if (!is_object($value)) {
+            return $value;
+        }
+
+        foreach ($this->callbacks as [$type, $callback]) {
+            if (!$value instanceof $type) {
+                continue;
+            }
+
+            $this->guard(
+                fn(): mixed => $callback($value, $this),
+                static fn(Exception $exception): ResolutionException => ResolutionException::callbackFailed(
+                    $type,
+                    $value::class,
+                    $exception,
+                ),
+            );
+        }
+
+        return $value;
     }
 
     /**
@@ -812,14 +866,14 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         }
 
         if ($concrete instanceof Closure) {
-            return $this->guard(
+            return $this->afterBuilding($this->guard(
                 fn(): mixed => $concrete($this),
                 static fn(Exception $exception): ResolutionException => ResolutionException::contextualFactoryFailed(
                     $class,
                     $binding->need,
                     $exception,
                 ),
-            );
+            ));
         }
 
         return $this->has($concrete)

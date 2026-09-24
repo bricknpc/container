@@ -410,6 +410,106 @@ final class ContainerTest extends TestCase
     }
 
     #[Test]
+    public function it_calls_the_callbacks_for_a_type_on_every_object_it_builds_of_that_type(): void
+    {
+        $seen = new ArrayObject();
+        $instance = new ServiceImplementation();
+        $container = new Container()
+            ->bind(Service::class, ServiceImplementation::class)
+            ->singleton('shared', OtherServiceImplementation::class)
+            ->bind('factory', static fn(): ServiceImplementation => new ServiceImplementation())
+            ->instance('instance', $instance)
+            ->afterResolving(Service::class, static function (object $service, ContainerInterface $container) use (
+                $seen,
+            ): void {
+                $seen->append([$service::class, $container]);
+            })
+            ->afterResolving(Plain::class, static function () use ($seen): void {
+                $seen->append(Plain::class);
+            });
+
+        $container->get(Service::class);
+        $container->get('shared');
+        $container->get('shared');
+        $container->get('factory');
+        $container->get('instance');
+        $container->make(Plain::class);
+        $container->bind('number', static fn(): int => 1)->get('number');
+
+        self::assertSame(
+            [
+                [ServiceImplementation::class, $container],
+                [OtherServiceImplementation::class, $container],
+                [ServiceImplementation::class, $container],
+                Plain::class,
+            ],
+            $seen->getArrayCopy(),
+        );
+    }
+
+    #[Test]
+    public function it_calls_the_callbacks_on_what_a_contextual_factory_returns(): void
+    {
+        $seen = new ArrayObject();
+        $container = new Container()->afterResolving(Service::class, static function (object $service) use (
+            $seen,
+        ): void {
+            $seen->append($service);
+        });
+        $container
+            ->when(NeedsService::class)
+            ->needs(Service::class)
+            ->give(static fn(): Service => new ServiceImplementation());
+
+        $needsService = $container->get(NeedsService::class);
+
+        self::assertSame([$needsService->service], $seen->getArrayCopy());
+    }
+
+    #[Test]
+    public function it_wraps_what_a_callback_throws_but_passes_a_logic_exception_through(): void
+    {
+        $previous = new RuntimeException('failed');
+        $container = new Container()
+            ->afterResolving(Plain::class, static fn(): never => throw $previous)
+            ->afterResolving(ServiceImplementation::class, static fn(): never => throw new LogicException('bug'));
+
+        try {
+            $container->get(Plain::class);
+            self::fail('Expected a ResolutionException.');
+        } catch (ResolutionException $exception) {
+            self::assertSame(
+                'A callback for "'
+                . Plain::class
+                . '" failed with RuntimeException after building "'
+                . Plain::class
+                . '".',
+                $exception->getMessage(),
+            );
+            self::assertSame($previous, $exception->getPrevious());
+            self::assertSame(
+                ['type' => Plain::class, 'class' => Plain::class, 'exceptionClass' => RuntimeException::class],
+                $exception->context,
+            );
+        }
+
+        $this->expectException(LogicException::class);
+
+        $container->get(ServiceImplementation::class);
+    }
+
+    #[Test]
+    public function it_refuses_a_callback_once_it_is_locked(): void
+    {
+        $container = new Container();
+        $container->lock();
+
+        $this->expectException(ContainerLockedException::class);
+
+        $container->afterResolving(Plain::class, static fn(): null => null);
+    }
+
+    #[Test]
     public function it_finds_a_class_that_is_defined_after_the_container_first_looked_for_it(): void
     {
         $container = new Container();
