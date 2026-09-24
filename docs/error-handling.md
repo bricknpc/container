@@ -31,6 +31,7 @@ try {
 | `ResolutionException` | `RuntimeException` | | The entry exists but cannot be built: a binding points at nothing, a parameter cannot be filled in, or a factory failed. |
 | `CircularDependencyException` | `RuntimeException` | | Resolving the entry requires the entry itself. |
 | `InvalidContextualBindingException` | `InvalidArgumentException` | | `when()` names something that is not a class, or `needs()` something that is neither a class or interface nor a parameter name. |
+| `InvalidCallableException` | `InvalidArgumentException` | | `call()` is given something that is not a closure, a function, a public method, or an invokable class. |
 
 All exception classes are `final`; catch them by class or by `ContainerException`.
 
@@ -83,14 +84,20 @@ Every exception carries diagnostic metadata in its public, read-only `context` p
 | --- | --- |
 | `EntryNotFoundException::forId()` | `id` |
 | `CircularDependencyException::forEntry()` | `id`, and `chain`: the list of entries from the one requested to the one that repeats |
-| `ResolutionException::missingDependency()` | `class`, `parameter`, and `dependency`: the type the container had no entry for |
-| `ResolutionException::unresolvableParameter()` | `class`, `parameter` |
+| `ResolutionException::missingDependency()` | `target`, `parameter`, and `dependency`: the type the container had no entry for |
+| `ResolutionException::unresolvableParameter()` | `target`, `parameter` |
+| `ResolutionException::unknownParameters()` | `target`, and `parameters`: the given names the target has no parameter for |
+| `ResolutionException::notBuildable()` | `id` |
 | `ResolutionException::unresolvableBinding()` | `id`, `concrete` |
 | `ResolutionException::factoryFailed()` | `id`, and `exceptionClass`: the class of the exception the factory threw |
 | `ResolutionException::unresolvableContextualBinding()` | `class`, `need`, `concrete` |
 | `ResolutionException::contextualFactoryFailed()` | `class`, `need`, and `exceptionClass` |
 | `InvalidContextualBindingException::notAClass()` | `class` |
 | `InvalidContextualBindingException::invalidNeed()` | `need` |
+| `InvalidCallableException::notCallable()` | `callable` |
+
+A `target` is what the parameters belong to: a class for a constructor, `Class::method` for a method, `Closure` for a
+closure, or the name of a function.
 
 Code that catches an exception and knows more can add to it with `addContext()`, which merges the given array into the
 context, replacing matching keys, and returns the exception:

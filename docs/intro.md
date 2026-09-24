@@ -32,6 +32,10 @@ argument to a new `FileLogger`, and builds the `Mailer`.
 [Contextual bindings](contextual-bindings.md) change what one class receives without changing it for the rest:
 `$container->when(Mailer::class)->needs(LoggerInterface::class)->give(MailLogger::class)`.
 
+`$container->make(Report::class, ['title' => 'Sales'])` builds a new instance with some constructor parameters given,
+and `$container->call([$controller, 'show'])` calls a method with its parameters filled in; see
+[making and calling](making-and-calling.md).
+
 Start with [installation](installation.md) and the [getting started guide](getting-started.md), then read how
 [autowiring](autowiring.md) fills in constructor parameters and how the container reports
 [errors](error-handling.md).

@@ -8,18 +8,33 @@ use Closure;
 use Exception;
 use LogicException;
 use ReflectionClass;
+use ReflectionMethod;
+use ReflectionFunction;
 use ReflectionNamedType;
 use ReflectionParameter;
+use ReflectionFunctionAbstract;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
 use Dirthara\Container\Exception\EntryNotFoundException;
+use Dirthara\Container\Exception\InvalidCallableException;
 use Dirthara\Container\Exception\CircularDependencyException;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
+use function strpos;
+use function substr;
+use function is_array;
+use function array_map;
+use function is_object;
 use function is_string;
+use function array_flip;
 use function array_keys;
+use function array_push;
+use function array_values;
 use function class_exists;
+use function method_exists;
+use function array_diff_key;
+use function function_exists;
 use function array_key_exists;
 
 final class Container implements ContainerInterface
@@ -51,7 +66,7 @@ final class Container implements ContainerInterface
     }
 
     /**
-     * @param string|Closure(ContainerInterface): mixed|null $concrete
+     * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      */
     public function bind(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -63,7 +78,7 @@ final class Container implements ContainerInterface
     }
 
     /**
-     * @param string|Closure(ContainerInterface): mixed|null $concrete
+     * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
      */
     public function singleton(string $abstract, string|Closure|null $concrete = null): self
     {
@@ -126,13 +141,58 @@ final class Container implements ContainerInterface
         }
 
         // @mago-expect analysis:mixed-assignment -- an entry can be any value, which the caller narrows
-        $resolved = $this->resolve($id, $binding ?? $class);
+        $resolved = $this->resolve($id, $binding ?? $class, [], $this->get(...));
 
         if ($binding?->shared === true) {
             $this->instances[$id] = $resolved;
         }
 
         return $resolved;
+    }
+
+    /**
+     * @template T of object
+     *
+     * @param class-string<T>|string $id
+     * @param array<string, mixed> $parameters
+     *
+     * @return ($id is class-string<T> ? T : mixed)
+     *
+     * @throws EntryNotFoundException
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     */
+    public function make(string $id, array $parameters = []): mixed
+    {
+        $binding = $this->bindings[$id] ?? null;
+        $class = $binding === null ? $this->instantiableClass($id) : null;
+
+        if ($binding === null && $class === null) {
+            throw array_key_exists($id, $this->instances)
+                ? ResolutionException::notBuildable($id)
+                : EntryNotFoundException::forId($id);
+        }
+
+        return $this->resolve($id, $binding ?? $class, $parameters, fn(string $concrete): mixed => $this->make(
+            $concrete,
+            $parameters,
+        ));
+    }
+
+    /**
+     * @param array{0: object|string, 1: string}|string|object $callable
+     * @param array<string, mixed> $parameters
+     *
+     * @throws InvalidCallableException
+     * @throws EntryNotFoundException
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     */
+    public function call(array|string|object $callable, array $parameters = []): mixed
+    {
+        [$function, $invoke, $target] = $this->reflectCallable($callable);
+
+        return $invoke(...$this->resolveArguments($target, $function->getParameters(), $parameters, null));
     }
 
     public function has(string $id): bool
@@ -146,12 +206,18 @@ final class Container implements ContainerInterface
 
     /**
      * @param Binding|ReflectionClass<object> $target
+     * @param array<string, mixed> $parameters
+     * @param Closure(string): mixed $resolveAlias
      *
      * @throws CircularDependencyException
      * @throws ResolutionException
      */
-    private function resolve(string $id, Binding|ReflectionClass $target): mixed
-    {
+    private function resolve(
+        string $id,
+        Binding|ReflectionClass $target,
+        array $parameters,
+        Closure $resolveAlias,
+    ): mixed {
         if (array_key_exists($id, $this->resolving)) {
             throw CircularDependencyException::forEntry($id, [...array_keys($this->resolving), $id]);
         }
@@ -159,25 +225,34 @@ final class Container implements ContainerInterface
         $this->resolving[$id] = true;
 
         try {
-            return $target instanceof Binding ? $this->resolveBinding($id, $target) : $this->build($target);
+            return $target instanceof Binding
+                ? $this->resolveBinding($id, $target, $parameters, $resolveAlias)
+                : $this->build($target, $parameters);
         } finally {
             unset($this->resolving[$id]);
         }
     }
 
     /**
+     * @param array<string, mixed> $parameters
+     * @param Closure(string): mixed $resolveAlias
+     *
      * @throws CircularDependencyException
      * @throws ResolutionException
      */
-    private function resolveBinding(string $id, Binding $binding): mixed
+    private function resolveBinding(string $id, Binding $binding, array $parameters, Closure $resolveAlias): mixed
     {
         $concrete = $binding->concrete;
 
         if ($concrete instanceof Closure) {
-            return $this->callFactory($concrete, static fn(Exception $exception): ResolutionException => ResolutionException::factoryFailed(
-                $id,
-                $exception,
-            ));
+            return $this->callFactory(
+                $concrete,
+                $parameters,
+                static fn(Exception $exception): ResolutionException => ResolutionException::factoryFailed(
+                    $id,
+                    $exception,
+                ),
+            );
         }
 
         if ($concrete === $id) {
@@ -185,24 +260,27 @@ final class Container implements ContainerInterface
 
             return $class === null
                 ? throw ResolutionException::unresolvableBinding($id, $concrete)
-                : $this->build($class);
+                : $this->build($class, $parameters);
         }
 
-        return $this->has($concrete)
-            ? $this->get($concrete)
-            : throw ResolutionException::unresolvableBinding($id, $concrete);
+        if (!$this->has($concrete)) {
+            throw ResolutionException::unresolvableBinding($id, $concrete);
+        }
+
+        return $resolveAlias($concrete);
     }
 
     /**
-     * @param Closure(ContainerInterface): mixed $factory
+     * @param Closure(ContainerInterface, array<string, mixed>): mixed $factory
+     * @param array<string, mixed> $parameters
      * @param Closure(Exception): ResolutionException $wrap
      *
      * @throws ResolutionException
      */
-    private function callFactory(Closure $factory, Closure $wrap): mixed
+    private function callFactory(Closure $factory, array $parameters, Closure $wrap): mixed
     {
         try {
-            return $factory($this);
+            return $factory($this, $parameters);
         } catch (EntryNotFoundException $exception) {
             throw $wrap($exception);
         } catch (ContainerException|LogicException $exception) {
@@ -224,38 +302,99 @@ final class Container implements ContainerInterface
 
     /**
      * @param ReflectionClass<object> $class
+     * @param array<string, mixed> $parameters
      *
      * @throws CircularDependencyException
      * @throws ResolutionException
      */
-    private function build(ReflectionClass $class): object
+    private function build(ReflectionClass $class, array $parameters): object
     {
-        $arguments = [];
+        $name = $class->getName();
 
-        foreach ($class->getConstructor()?->getParameters() ?? [] as $parameter) {
-            if ($parameter->isVariadic()) {
-                continue;
-            }
-
-            $arguments[] = $this->resolveParameter($class->getName(), $parameter);
-        }
-
-        return $class->newInstance(...$arguments);
+        return $class->newInstance(...$this->resolveArguments(
+            $name,
+            $class->getConstructor()?->getParameters() ?? [],
+            $parameters,
+            $name,
+        ));
     }
 
     /**
-     * @param class-string $class
+     * @param array<array-key, ReflectionParameter> $reflectionParameters
+     * @param array<string, mixed> $parameters
+     * @param class-string|null $contextualClass
+     *
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     *
+     * @return list<mixed>
+     */
+    private function resolveArguments(
+        string $target,
+        array $reflectionParameters,
+        array $parameters,
+        ?string $contextualClass,
+    ): array {
+        $unknown = array_diff_key(
+            $parameters,
+            array_flip(array_map(
+                static fn(ReflectionParameter $parameter): string => $parameter->getName(),
+                $reflectionParameters,
+            )),
+        );
+
+        if ($unknown !== []) {
+            throw ResolutionException::unknownParameters($target, array_keys($unknown));
+        }
+
+        $arguments = [];
+
+        foreach ($reflectionParameters as $parameter) {
+            $name = $parameter->getName();
+
+            if ($parameter->isVariadic()) {
+                array_push($arguments, ...$this->variadicArguments($parameters, $name));
+
+                continue;
+            }
+
+            $arguments[] = array_key_exists($name, $parameters)
+                ? $parameters[$name]
+                : $this->resolveParameter($target, $parameter, $contextualClass);
+        }
+
+        return $arguments;
+    }
+
+    /**
+     * @param array<string, mixed> $parameters
+     *
+     * @return list<mixed>
+     */
+    private function variadicArguments(array $parameters, string $name): array
+    {
+        if (!array_key_exists($name, $parameters)) {
+            return [];
+        }
+
+        return is_array($parameters[$name]) ? array_values($parameters[$name]) : [$parameters[$name]];
+    }
+
+    /**
+     * @param class-string|null $contextualClass
      *
      * @throws CircularDependencyException
      * @throws ResolutionException
      */
-    private function resolveParameter(string $class, ReflectionParameter $parameter): mixed
+    private function resolveParameter(string $target, ReflectionParameter $parameter, ?string $contextualClass): mixed
     {
         $dependency = $this->dependencyOf($parameter);
-        $contextual = $this->contextualBindingFor($class, $parameter->getName(), $dependency);
+        $contextual = $contextualClass === null
+            ? null
+            : $this->contextualBindingFor($contextualClass, $parameter->getName(), $dependency);
 
-        if ($contextual !== null) {
-            return $this->resolveContextualBinding($class, $contextual);
+        if ($contextualClass !== null && $contextual !== null) {
+            return $this->resolveContextualBinding($contextualClass, $contextual);
         }
 
         if ($dependency !== null && $this->has($dependency)) {
@@ -271,8 +410,8 @@ final class Container implements ContainerInterface
         }
 
         throw $dependency === null
-            ? ResolutionException::unresolvableParameter($class, $parameter->getName())
-            : ResolutionException::missingDependency($class, $parameter->getName(), $dependency);
+            ? ResolutionException::unresolvableParameter($target, $parameter->getName())
+            : ResolutionException::missingDependency($target, $parameter->getName(), $dependency);
     }
 
     /**
@@ -300,16 +439,85 @@ final class Container implements ContainerInterface
         }
 
         if ($concrete instanceof Closure) {
-            return $this->callFactory($concrete, static fn(Exception $exception): ResolutionException => ResolutionException::contextualFactoryFailed(
-                $class,
-                $binding->need,
-                $exception,
-            ));
+            return $this->callFactory(
+                $concrete,
+                [],
+                static fn(Exception $exception): ResolutionException => ResolutionException::contextualFactoryFailed(
+                    $class,
+                    $binding->need,
+                    $exception,
+                ),
+            );
         }
 
         return $this->has($concrete)
             ? $this->get($concrete)
             : throw ResolutionException::unresolvableContextualBinding($class, $binding->need, $concrete);
+    }
+
+    /**
+     * @param array{0: object|string, 1: string}|string|object $callable
+     *
+     * @throws InvalidCallableException
+     * @throws EntryNotFoundException
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     *
+     * @return array{ReflectionFunctionAbstract, Closure, string}
+     */
+    private function reflectCallable(array|string|object $callable): array
+    {
+        if ($callable instanceof Closure) {
+            return [new ReflectionFunction($callable), $callable, 'Closure'];
+        }
+
+        if (is_string($callable) && function_exists($callable)) {
+            return [new ReflectionFunction($callable), $callable(...), $callable];
+        }
+
+        if (is_array($callable)) {
+            return $this->reflectMethod($callable[0], $callable[1]);
+        }
+
+        if (is_object($callable)) {
+            return $this->reflectMethod($callable, '__invoke');
+        }
+
+        $separator = strpos($callable, needle: '::');
+
+        return $separator === false
+            ? $this->reflectMethod($callable, '__invoke')
+            : $this->reflectMethod(substr($callable, offset: 0, length: $separator), substr($callable, $separator + 2));
+    }
+
+    /**
+     * @throws InvalidCallableException
+     * @throws EntryNotFoundException
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     *
+     * @return array{ReflectionFunctionAbstract, Closure, string}
+     */
+    private function reflectMethod(object|string $target, string $method): array
+    {
+        $class = is_object($target) ? $target::class : $target;
+        $name = $class . '::' . $method;
+
+        if (!class_exists($class) || !method_exists($class, $method)) {
+            throw InvalidCallableException::notCallable($name);
+        }
+
+        $reflection = new ReflectionMethod($class, $method);
+
+        if (!$reflection->isPublic()) {
+            throw InvalidCallableException::notCallable($name);
+        }
+
+        if ($reflection->isStatic()) {
+            return [$reflection, $reflection->getClosure(), $name];
+        }
+
+        return [$reflection, $reflection->getClosure(is_object($target) ? $target : $this->get($class)), $name];
     }
 
     private function dependencyOf(ReflectionParameter $parameter): ?string

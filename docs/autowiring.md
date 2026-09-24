@@ -17,15 +17,17 @@ An autowired class is built again on every `get()`, unless it is registered with
 
 The container reads the constructor and resolves each parameter in turn, using the first rule that applies:
 
-1. A [contextual binding](contextual-bindings.md) for the class being built names the parameter, or its class or
+1. The parameter was given by name to [`make()`](making-and-calling.md): the given value. This applies only to the
+   class being made, not to its dependencies.
+2. A [contextual binding](contextual-bindings.md) for the class being built names the parameter, or its class or
    interface type: what that binding gives.
-2. The parameter has a class or interface type, and the container has an entry for it: that entry, resolved with
+3. The parameter has a class or interface type, and the container has an entry for it: that entry, resolved with
    `get()`.
-3. The parameter has a default value: the default.
-4. The parameter accepts `null`: `null`.
-5. Otherwise, resolution fails with a `ResolutionException`.
+4. The parameter has a default value: the default.
+5. The parameter accepts `null`: `null`.
+6. Otherwise, resolution fails with a `ResolutionException`.
 
-A variadic parameter is left empty.
+A variadic parameter is left empty, unless a value for it is given to `make()`.
 
 ```php
 final readonly class Mailer
@@ -43,8 +45,8 @@ $container->bind(LoggerInterface::class, FileLogger::class);
 $mailer = $container->get(Mailer::class);
 ```
 
-`$logger` is a new `FileLogger` (rule 2). `$clock` is `null`, because nothing is registered for `Clock` and it is an
-interface that cannot be autowired (rule 3). `$retries` is `3` (rule 3).
+`$logger` is a new `FileLogger` (rule 3). `$clock` is `null`, because nothing is registered for `Clock` and it is an
+interface that cannot be autowired (rule 4). `$retries` is `3` (rule 4).
 
 A parameter with a union or intersection type, or with a built-in type such as `int` or `string`, never comes from the
 container. It gets its default or `null`, and resolution fails when it has neither. To fill such a parameter in, give it

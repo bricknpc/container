@@ -7,7 +7,9 @@ namespace Dirthara\Container\Exception;
 use Throwable;
 use RuntimeException;
 
+use function implode;
 use function sprintf;
+use function array_map;
 
 final class ResolutionException extends RuntimeException implements ContainerException
 {
@@ -23,28 +25,56 @@ final class ResolutionException extends RuntimeException implements ContainerExc
         $this->context = $context;
     }
 
-    public static function unresolvableParameter(string $class, string $parameter): self
+    public static function unresolvableParameter(string $target, string $parameter): self
     {
         return new self(
             message: sprintf(
                 'Unable to resolve parameter "$%s" of "%s": it has no class type, no default value, and is not nullable.',
                 self::printable($parameter),
-                self::printable($class),
+                self::printable($target),
             ),
-            context: ['class' => $class, 'parameter' => $parameter],
+            context: ['target' => $target, 'parameter' => $parameter],
         );
     }
 
-    public static function missingDependency(string $class, string $parameter, string $dependency): self
+    public static function missingDependency(string $target, string $parameter, string $dependency): self
     {
         return new self(
             message: sprintf(
                 'Unable to resolve parameter "$%s" of "%s": no entry "%s" was found, and the parameter has no default value and is not nullable.',
                 self::printable($parameter),
-                self::printable($class),
+                self::printable($target),
                 self::printable($dependency),
             ),
-            context: ['class' => $class, 'parameter' => $parameter, 'dependency' => $dependency],
+            context: ['target' => $target, 'parameter' => $parameter, 'dependency' => $dependency],
+        );
+    }
+
+    /**
+     * @param list<array-key> $parameters
+     */
+    public static function unknownParameters(string $target, array $parameters): self
+    {
+        return new self(
+            message: sprintf(
+                'Unable to resolve "%s": it has no parameters named "%s".',
+                self::printable($target),
+                implode('", "', array_map(static fn(int|string $name): string => self::printable(
+                    (string) $name,
+                ), $parameters)),
+            ),
+            context: ['target' => $target, 'parameters' => $parameters],
+        );
+    }
+
+    public static function notBuildable(string $id): self
+    {
+        return new self(
+            message: sprintf(
+                'Unable to make a new "%s": it is registered only as an instance, which the container cannot build again.',
+                self::printable($id),
+            ),
+            context: ['id' => $id],
         );
     }
 

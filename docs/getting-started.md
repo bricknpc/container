@@ -61,7 +61,7 @@ use Psr\Container\ContainerInterface;
 // A class or interface resolved as another entry, which can itself be bound or autowired.
 $container->bind(LoggerInterface::class, FileLogger::class);
 
-// A factory, called with the container.
+// A factory, called with the container and the parameters given to make(), which get() leaves empty.
 $container->bind(Connection::class, static fn(ContainerInterface $container): Connection => new Connection(
     $container->get('config')['dsn'],
 ));
@@ -73,7 +73,10 @@ $container->bind(Mailer::class);
 | Parameter | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `abstract` | `string` | | The identifier to register. |
-| `concrete` | `string`, `Closure`, or `null` | `null` | Another entry or class to resolve instead, a factory that receives the container, or `null` to autowire `abstract` itself. |
+| `concrete` | `string`, `Closure`, or `null` | `null` | Another entry or class to resolve instead, a factory that receives the container and an `array<string, mixed>` of parameters, or `null` to autowire `abstract` itself. |
+
+A factory can declare only the container, as above, and ignore the parameters. See
+[making new instances](making-and-calling.md) for where they come from.
 
 ## Share an entry
 

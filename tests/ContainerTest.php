@@ -7,6 +7,7 @@ namespace Dirthara\Container\Tests;
 use Error;
 use stdClass;
 use TypeError;
+use ArrayObject;
 use LogicException;
 use ReflectionClass;
 use RuntimeException;
@@ -17,11 +18,14 @@ use PHPUnit\Framework\Attributes\Test;
 use Dirthara\Container\Tests\Fixtures\Suit;
 use Dirthara\Container\Tests\Fixtures\First;
 use Dirthara\Container\Tests\Fixtures\Plain;
+use Dirthara\Container\Tests\Fixtures\Mailer;
 use Dirthara\Container\Tests\Fixtures\Nested;
 use Dirthara\Container\Tests\Fixtures\Second;
 use Psr\Container\NotFoundExceptionInterface;
+use Dirthara\Container\Tests\Fixtures\Handler;
 use Dirthara\Container\Tests\Fixtures\Scalars;
 use Dirthara\Container\Tests\Fixtures\Service;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Dirthara\Container\Tests\Fixtures\SelfTyped;
 use Dirthara\Container\Tests\Fixtures\ParentTyped;
 use Dirthara\Container\Tests\Fixtures\NeedsService;
@@ -33,8 +37,10 @@ use Dirthara\Container\Tests\Fixtures\NullableService;
 use Dirthara\Container\Tests\Fixtures\OptionalService;
 use Dirthara\Container\Exception\EntryNotFoundException;
 use Dirthara\Container\Tests\Fixtures\InheritsSelfTyped;
+use Dirthara\Container\Exception\InvalidCallableException;
 use Dirthara\Container\Tests\Fixtures\ServiceImplementation;
 use Dirthara\Container\Exception\CircularDependencyException;
+use Dirthara\Container\Tests\Fixtures\OtherServiceImplementation;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
 final class ContainerTest extends TestCase
@@ -276,7 +282,7 @@ final class ContainerTest extends TestCase
                 $exception->getMessage(),
             );
             self::assertSame(
-                ['class' => NeedsService::class, 'parameter' => 'service', 'dependency' => Service::class],
+                ['target' => NeedsService::class, 'parameter' => 'service', 'dependency' => Service::class],
                 $exception->context,
             );
         }
@@ -336,7 +342,7 @@ final class ContainerTest extends TestCase
                 . '": it has no class type, no default value, and is not nullable.',
                 $exception->getMessage(),
             );
-            self::assertSame(['class' => RequiresNumber::class, 'parameter' => 'number'], $exception->context);
+            self::assertSame(['target' => RequiresNumber::class, 'parameter' => 'number'], $exception->context);
         }
     }
 
@@ -507,5 +513,297 @@ final class ContainerTest extends TestCase
             );
             self::assertSame(['class' => Service::class], $exception->context);
         }
+    }
+
+    #[Test]
+    public function it_makes_a_new_instance_of_an_unregistered_class_each_time(): void
+    {
+        $container = new Container();
+
+        $first = $container->make(Plain::class);
+
+        self::assertInstanceOf(Plain::class, $first);
+        self::assertNotSame($first, $container->make(Plain::class));
+    }
+
+    #[Test]
+    public function it_makes_a_new_instance_of_a_singleton_without_replacing_the_shared_one(): void
+    {
+        $container = new Container()->singleton(Plain::class);
+        $shared = $container->get(Plain::class);
+
+        self::assertNotSame($shared, $container->make(Plain::class));
+        self::assertSame($shared, $container->get(Plain::class));
+    }
+
+    #[Test]
+    public function it_makes_a_new_instance_of_a_class_registered_as_an_instance(): void
+    {
+        $plain = new Plain();
+        $container = new Container()->instance(Plain::class, $plain);
+
+        self::assertNotSame($plain, $container->make(Plain::class));
+    }
+
+    #[Test]
+    public function it_makes_a_new_instance_through_a_binding_even_when_its_target_is_shared(): void
+    {
+        $container = new Container()
+            ->singleton(Service::class, ServiceImplementation::class)
+            ->singleton(ServiceImplementation::class);
+
+        $made = $container->make(Service::class);
+
+        self::assertInstanceOf(ServiceImplementation::class, $made);
+        self::assertNotSame($container->get(Service::class), $made);
+        self::assertNotSame($container->get(ServiceImplementation::class), $made);
+    }
+
+    #[Test]
+    public function it_refuses_to_make_an_entry_registered_only_as_an_instance(): void
+    {
+        $container = new Container()->instance('config', ['debug' => true]);
+
+        try {
+            $container->make('config');
+            self::fail('Expected a ResolutionException.');
+        } catch (ResolutionException $exception) {
+            self::assertSame(
+                'Unable to make a new "config": it is registered only as an instance, which the container cannot build again.',
+                $exception->getMessage(),
+            );
+            self::assertSame(['id' => 'config'], $exception->context);
+        }
+    }
+
+    #[Test]
+    public function it_throws_not_found_when_making_an_unknown_entry(): void
+    {
+        $this->expectException(EntryNotFoundException::class);
+
+        new Container()->make(Service::class);
+    }
+
+    #[Test]
+    public function it_makes_an_instance_with_the_given_parameters_and_autowires_the_rest(): void
+    {
+        $primary = new OtherServiceImplementation();
+        $container = new Container()->bind(Service::class, ServiceImplementation::class);
+
+        $mailer = $container->make(Mailer::class, ['primary' => $primary, 'retries' => 9]);
+
+        self::assertSame($primary, $mailer->primary);
+        self::assertInstanceOf(ServiceImplementation::class, $mailer->fallback);
+        self::assertSame(9, $mailer->retries);
+        self::assertSame(4, $container->make(RequiresNumber::class, ['number' => 4])->number);
+    }
+
+    #[Test]
+    public function it_prefers_given_parameters_over_contextual_bindings(): void
+    {
+        $container = new Container();
+        $container->when(Mailer::class)->needs('$retries')->giveValue(5);
+        $container->when(Mailer::class)->needs(Service::class)->give(ServiceImplementation::class);
+
+        self::assertSame(7, $container->make(Mailer::class, ['retries' => 7])->retries);
+        self::assertSame(5, $container->make(Mailer::class)->retries);
+    }
+
+    #[Test]
+    public function it_spreads_a_given_variadic_parameter(): void
+    {
+        $container = new Container();
+
+        self::assertSame(['a', 'b'], $container->make(Scalars::class, ['rest' => ['x' => 'a', 'y' => 'b']])->rest);
+        self::assertSame(['a'], $container->make(Scalars::class, ['rest' => 'a'])->rest);
+    }
+
+    #[Test]
+    public function it_refuses_parameters_the_constructor_does_not_have(): void
+    {
+        try {
+            new Container()->make(RequiresNumber::class, ['number' => 1, 'numbr' => 2, 'other' => 3]);
+            self::fail('Expected a ResolutionException.');
+        } catch (ResolutionException $exception) {
+            self::assertSame(
+                'Unable to resolve "' . RequiresNumber::class . '": it has no parameters named "numbr", "other".',
+                $exception->getMessage(),
+            );
+            self::assertSame(
+                ['target' => RequiresNumber::class, 'parameters' => ['numbr', 'other']],
+                $exception->context,
+            );
+        }
+    }
+
+    #[Test]
+    public function it_passes_the_given_parameters_to_a_bound_factory(): void
+    {
+        $container = new Container()->bind(
+            'service',
+            static fn(ContainerInterface $container, array $parameters): array => $parameters,
+        );
+
+        self::assertSame(['name' => 'made'], $container->make('service', ['name' => 'made']));
+        self::assertSame([], $container->get('service'));
+    }
+
+    #[Test]
+    public function it_detects_a_circular_dependency_when_making(): void
+    {
+        $this->expectException(CircularDependencyException::class);
+
+        new Container()->make(First::class);
+    }
+
+    #[Test]
+    public function it_calls_a_closure_with_autowired_and_given_parameters(): void
+    {
+        $container = new Container()->bind(Service::class, ServiceImplementation::class);
+
+        self::assertSame(ServiceImplementation::class . ' ' . Plain::class . ' 2', $container->call(
+            static fn(Service $service, Plain $plain, int $count): string => (
+                $service::class . ' ' . $plain::class . ' ' . $count
+            ),
+            ['count' => 2],
+        ));
+    }
+
+    #[Test]
+    public function it_calls_a_method_on_an_object(): void
+    {
+        $service = new ServiceImplementation();
+        $container = new Container()->instance(Service::class, $service);
+
+        self::assertSame([$service, 1], $container->call([new Handler(), 'handle']));
+        self::assertSame([$service, 3], $container->call([new Handler(), 'handle'], ['count' => 3]));
+    }
+
+    #[Test]
+    public function it_calls_a_method_on_a_class_resolved_from_the_container(): void
+    {
+        $resolved = new ArrayObject();
+        $service = new ServiceImplementation();
+        $container = new Container()->bind(Handler::class, static function () use ($resolved): Handler {
+            $handler = new Handler();
+            $resolved->append($handler);
+
+            return $handler;
+        });
+
+        self::assertSame([$service, 1], $container->call(Handler::class . '::handle', ['service' => $service]));
+        self::assertSame([$service, 1], $container->call([Handler::class, 'handle'], ['service' => $service]));
+        self::assertCount(2, $resolved);
+    }
+
+    #[Test]
+    public function it_calls_a_static_method_without_resolving_the_class(): void
+    {
+        $container = new Container();
+        $expected = 'static:' . Plain::class;
+
+        self::assertSame($expected, $container->call([Handler::class, 'describe'], ['name' => 'static']));
+        self::assertSame($expected, $container->call(Handler::class . '::describe', ['name' => 'static']));
+    }
+
+    #[Test]
+    public function it_calls_an_invokable_object_and_an_invokable_class(): void
+    {
+        $plain = new Plain();
+        $container = new Container()->instance(Plain::class, $plain);
+
+        self::assertSame($plain, $container->call(new Handler()));
+        self::assertSame($plain, $container->call(Handler::class));
+    }
+
+    #[Test]
+    public function it_calls_a_function_by_name(): void
+    {
+        self::assertSame(3, new Container()->call('strlen', ['string' => 'abc']));
+    }
+
+    #[Test]
+    public function it_calls_a_method_with_a_given_variadic_parameter(): void
+    {
+        self::assertSame(['a', 'b'], new Container()->call([new Handler(), 'collect'], ['items' => ['a', 'b']]));
+        self::assertSame([], new Container()->call([new Handler(), 'collect']));
+    }
+
+    #[Test]
+    public function it_leaves_what_the_callable_throws_unwrapped(): void
+    {
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('handler failed');
+
+        new Container()->call([new Handler(), 'fail']);
+    }
+
+    #[Test]
+    public function it_does_not_apply_contextual_bindings_to_a_call(): void
+    {
+        $container = new Container()->singleton(Service::class, ServiceImplementation::class);
+        $container->when(Handler::class)->needs(Service::class)->give(OtherServiceImplementation::class);
+
+        self::assertSame([$container->get(Service::class), 1], $container->call([Handler::class, 'handle']));
+    }
+
+    #[Test]
+    public function it_names_the_method_when_a_call_cannot_resolve_a_parameter(): void
+    {
+        try {
+            new Container()->call([new Handler(), 'handle']);
+            self::fail('Expected a ResolutionException.');
+        } catch (ResolutionException $exception) {
+            self::assertSame(
+                ['target' => Handler::class . '::handle', 'parameter' => 'service', 'dependency' => Service::class],
+                $exception->context,
+            );
+        }
+    }
+
+    #[Test]
+    public function it_refuses_parameters_a_closure_does_not_have(): void
+    {
+        try {
+            new Container()->call(static fn(): null => null, ['extra' => 1]);
+            self::fail('Expected a ResolutionException.');
+        } catch (ResolutionException $exception) {
+            self::assertSame(['target' => 'Closure', 'parameters' => ['extra']], $exception->context);
+        }
+    }
+
+    /**
+     * @param array{0: object|string, 1: string}|string|object $callable
+     */
+    #[Test]
+    #[DataProvider('uncallables')]
+    public function it_refuses_what_it_cannot_call(array|string|object $callable, string $description): void
+    {
+        try {
+            new Container()->call($callable);
+            self::fail('Expected an InvalidCallableException.');
+        } catch (InvalidCallableException $exception) {
+            self::assertSame(
+                'Unable to call "'
+                . $description
+                . '": it is not a closure, a function, a public method, or an invokable class.',
+                $exception->getMessage(),
+            );
+            self::assertSame(['callable' => $description], $exception->context);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{array{0: object|string, 1: string}|string|object, string}>
+     */
+    public static function uncallables(): iterable
+    {
+        yield 'private method' => [[new Handler(), 'hidden'], Handler::class . '::hidden'];
+        yield 'missing method' => [[Handler::class, 'missing'], Handler::class . '::missing'];
+        yield 'missing method as a string' => [Handler::class . '::missing', Handler::class . '::missing'];
+        yield 'unknown class' => [['Missing\\Handler', 'handle'], 'Missing\\Handler::handle'];
+        yield 'class that is not invokable' => [Plain::class, Plain::class . '::__invoke'];
+        yield 'object that is not invokable' => [new Plain(), Plain::class . '::__invoke'];
+        yield 'unknown function' => ['missing_function', 'missing_function::__invoke'];
     }
 }

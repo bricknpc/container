@@ -13,7 +13,7 @@ use Psr\Container\ContainerInterface;
 final readonly class Binding
 {
     /**
-     * @param string|Closure(ContainerInterface): mixed $concrete
+     * @param string|Closure(ContainerInterface, array<string, mixed>): mixed $concrete
      */
     public function __construct(
         public string|Closure $concrete,
