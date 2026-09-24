@@ -8,11 +8,8 @@ use Closure;
 use Exception;
 use LogicException;
 use ReflectionClass;
-use ReflectionMethod;
-use ReflectionFunction;
 use ReflectionNamedType;
 use ReflectionParameter;
-use ReflectionFunctionAbstract;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Contract\Scope;
 use Dirthara\Container\Contract\Invoker;
@@ -25,20 +22,15 @@ use Dirthara\Container\Exception\InvalidCallableException;
 use Dirthara\Container\Exception\CircularDependencyException;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
 
-use function strpos;
-use function substr;
 use function is_array;
 use function array_map;
-use function is_object;
 use function is_string;
 use function array_flip;
 use function array_keys;
 use function array_push;
 use function array_values;
 use function class_exists;
-use function method_exists;
 use function array_diff_key;
-use function function_exists;
 use function array_key_exists;
 
 final class Container implements ContainerInterface, ContainerConfigurator, InstanceFactory, Invoker, Scope
@@ -78,8 +70,11 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     private array $constructorParameters = [];
 
+    private readonly CallableResolver $callables;
+
     public function __construct()
     {
+        $this->callables = new CallableResolver($this->instanceOf(...));
         $this->instances[self::class] = $this;
         $this->instances[ContainerInterface::class] = $this;
         $this->instances[ContainerConfigurator::class] = $this;
@@ -217,9 +212,14 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     public function call(array|string|object $callable, array $parameters = []): mixed
     {
-        [$function, $invoke, $target] = $this->reflectCallable($callable);
+        $resolved = $this->callables->resolve($callable);
 
-        return $invoke(...$this->resolveArguments($target, $function->getParameters(), $parameters, null));
+        return ($resolved->closure)(...$this->resolveArguments(
+            $resolved->name,
+            $resolved->reflection->getParameters(),
+            $parameters,
+            null,
+        ));
     }
 
     public function has(string $id): bool
@@ -522,68 +522,15 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     }
 
     /**
-     * @param array{0: object|string, 1: string}|string|object $callable
+     * @param class-string $class
      *
-     * @throws InvalidCallableException
      * @throws EntryNotFoundException
      * @throws CircularDependencyException
      * @throws ResolutionException
-     *
-     * @return array{ReflectionFunctionAbstract, Closure, string}
      */
-    private function reflectCallable(array|string|object $callable): array
+    private function instanceOf(string $class): object
     {
-        if ($callable instanceof Closure) {
-            return [new ReflectionFunction($callable), $callable, 'Closure'];
-        }
-
-        if (is_string($callable) && function_exists($callable)) {
-            return [new ReflectionFunction($callable), $callable(...), $callable];
-        }
-
-        if (is_array($callable)) {
-            return $this->reflectMethod($callable[0], $callable[1]);
-        }
-
-        if (is_object($callable)) {
-            return $this->reflectMethod($callable, '__invoke');
-        }
-
-        $separator = strpos($callable, needle: '::');
-
-        return $separator === false
-            ? $this->reflectMethod($callable, '__invoke')
-            : $this->reflectMethod(substr($callable, offset: 0, length: $separator), substr($callable, $separator + 2));
-    }
-
-    /**
-     * @throws InvalidCallableException
-     * @throws EntryNotFoundException
-     * @throws CircularDependencyException
-     * @throws ResolutionException
-     *
-     * @return array{ReflectionFunctionAbstract, Closure, string}
-     */
-    private function reflectMethod(object|string $target, string $method): array
-    {
-        $class = is_object($target) ? $target::class : $target;
-        $name = $class . '::' . $method;
-
-        if (!class_exists($class) || !method_exists($class, $method)) {
-            throw InvalidCallableException::notCallable($name);
-        }
-
-        $reflection = new ReflectionMethod($class, $method);
-
-        if (!$reflection->isPublic()) {
-            throw InvalidCallableException::notCallable($name);
-        }
-
-        if ($reflection->isStatic()) {
-            return [$reflection, $reflection->getClosure(), $name];
-        }
-
-        return [$reflection, $reflection->getClosure(is_object($target) ? $target : $this->get($class)), $name];
+        return $this->get($class);
     }
 
     private function dependencyOf(ReflectionParameter $parameter): ?string
