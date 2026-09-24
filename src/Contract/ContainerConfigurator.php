@@ -20,6 +20,11 @@ interface ContainerConfigurator
      */
     public function singleton(string $abstract, string|Closure|null $concrete = null): self;
 
+    /**
+     * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
+     */
+    public function scoped(string $abstract, string|Closure|null $concrete = null): self;
+
     public function instance(string $abstract, mixed $instance): self;
 
     /**

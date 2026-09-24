@@ -14,6 +14,7 @@ use RuntimeException;
 use PHPUnit\Framework\TestCase;
 use Dirthara\Container\Container;
 use Psr\Container\ContainerInterface;
+use Dirthara\Container\Contract\Scope;
 use PHPUnit\Framework\Attributes\Test;
 use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Tests\Fixtures\Suit;
@@ -58,6 +59,7 @@ final class ContainerTest extends TestCase
         self::assertSame($container, $container->get(ContainerConfigurator::class));
         self::assertSame($container, $container->get(InstanceFactory::class));
         self::assertSame($container, $container->get(Invoker::class));
+        self::assertSame($container, $container->get(Scope::class));
     }
 
     #[Test]
@@ -106,6 +108,104 @@ final class ContainerTest extends TestCase
 
         self::assertInstanceOf(RequiresNumber::class, $made);
         self::assertSame(3, $made->number);
+    }
+
+    #[Test]
+    public function it_shares_a_scoped_entry_until_the_scope_is_reset(): void
+    {
+        $container = new Container()->scoped(Service::class, ServiceImplementation::class);
+
+        $first = $container->get(Service::class);
+
+        self::assertInstanceOf(ServiceImplementation::class, $first);
+        self::assertSame($first, $container->get(Service::class));
+
+        $container->resetScope();
+
+        self::assertNotSame($first, $container->get(Service::class));
+    }
+
+    #[Test]
+    public function it_keeps_singletons_and_instances_when_the_scope_is_reset(): void
+    {
+        $instance = new Plain();
+        $container = new Container()
+            ->singleton(Service::class, ServiceImplementation::class)
+            ->instance(Plain::class, $instance);
+        $singleton = $container->get(Service::class);
+
+        $container->resetScope();
+
+        self::assertSame($singleton, $container->get(Service::class));
+        self::assertSame($instance, $container->get(Plain::class));
+    }
+
+    #[Test]
+    public function it_returns_a_scoped_instance_until_the_scope_is_reset(): void
+    {
+        $container = new Container();
+        $container->scopedInstance('request', ['path' => '/']);
+
+        self::assertTrue($container->has('request'));
+        self::assertSame(['path' => '/'], $container->get('request'));
+
+        $container->resetScope();
+
+        self::assertFalse($container->has('request'));
+    }
+
+    #[Test]
+    public function it_prefers_a_scoped_instance_and_falls_back_to_the_registration_after_a_reset(): void
+    {
+        $scoped = new ServiceImplementation();
+        $instance = new Plain();
+        $container = new Container()
+            ->bind(Service::class, OtherServiceImplementation::class)
+            ->instance(Plain::class, $instance);
+        $container->scopedInstance(Service::class, $scoped)->scopedInstance(Plain::class, new Plain());
+
+        self::assertSame($scoped, $container->get(Service::class));
+        self::assertNotSame($instance, $container->get(Plain::class));
+
+        $container->resetScope();
+
+        self::assertInstanceOf(OtherServiceImplementation::class, $container->get(Service::class));
+        self::assertSame($instance, $container->get(Plain::class));
+    }
+
+    #[Test]
+    public function it_discards_a_scoped_value_when_the_entry_is_registered_again(): void
+    {
+        $instance = new Plain();
+        $container = new Container()->scoped(Service::class, ServiceImplementation::class);
+        $container->get(Service::class);
+        $container->scopedInstance(Plain::class, new Plain());
+
+        $container->bind(Service::class, OtherServiceImplementation::class)->instance(Plain::class, $instance);
+
+        self::assertInstanceOf(OtherServiceImplementation::class, $container->get(Service::class));
+        self::assertSame($instance, $container->get(Plain::class));
+    }
+
+    #[Test]
+    public function it_makes_a_new_instance_of_a_scoped_entry_without_replacing_the_scoped_one(): void
+    {
+        $container = new Container()->scoped(Plain::class);
+        $scoped = $container->get(Plain::class);
+
+        self::assertNotSame($scoped, $container->make(Plain::class));
+        self::assertSame($scoped, $container->get(Plain::class));
+    }
+
+    #[Test]
+    public function it_refuses_to_make_an_entry_that_is_only_a_scoped_instance(): void
+    {
+        $container = new Container();
+        $container->scopedInstance('request', ['path' => '/']);
+
+        $this->expectException(ResolutionException::class);
+
+        $container->make('request');
     }
 
     #[Test]

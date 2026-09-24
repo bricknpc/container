@@ -14,6 +14,7 @@ use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionFunctionAbstract;
 use Psr\Container\ContainerInterface;
+use Dirthara\Container\Contract\Scope;
 use Dirthara\Container\Contract\Invoker;
 use Dirthara\Container\Contract\InstanceFactory;
 use Dirthara\Container\Exception\ContainerException;
@@ -40,7 +41,7 @@ use function array_diff_key;
 use function function_exists;
 use function array_key_exists;
 
-final class Container implements ContainerInterface, ContainerConfigurator, InstanceFactory, Invoker
+final class Container implements ContainerInterface, ContainerConfigurator, InstanceFactory, Invoker, Scope
 {
     /**
      * @var array<string, Binding>
@@ -51,6 +52,11 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      * @var array<string, mixed>
      */
     private array $instances = [];
+
+    /**
+     * @var array<string, mixed>
+     */
+    private array $scopedInstances = [];
 
     /**
      * @var array<class-string, array<string, ContextualBinding>>
@@ -69,6 +75,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $this->instances[ContainerConfigurator::class] = $this;
         $this->instances[InstanceFactory::class] = $this;
         $this->instances[Invoker::class] = $this;
+        $this->instances[Scope::class] = $this;
     }
 
     /**
@@ -76,11 +83,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     public function bind(string $abstract, string|Closure|null $concrete = null): self
     {
-        $this->bindings[$abstract] = new Binding(concrete: $concrete ?? $abstract, shared: false);
-
-        unset($this->instances[$abstract]);
-
-        return $this;
+        return $this->register($abstract, $concrete, Lifetime::Transient);
     }
 
     /**
@@ -88,20 +91,36 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     public function singleton(string $abstract, string|Closure|null $concrete = null): self
     {
-        $this->bindings[$abstract] = new Binding(concrete: $concrete ?? $abstract, shared: true);
+        return $this->register($abstract, $concrete, Lifetime::Shared);
+    }
 
-        unset($this->instances[$abstract]);
-
-        return $this;
+    /**
+     * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
+     */
+    public function scoped(string $abstract, string|Closure|null $concrete = null): self
+    {
+        return $this->register($abstract, $concrete, Lifetime::Scoped);
     }
 
     public function instance(string $abstract, mixed $instance): self
     {
-        unset($this->bindings[$abstract]);
+        unset($this->bindings[$abstract], $this->scopedInstances[$abstract]);
 
         $this->instances[$abstract] = $instance;
 
         return $this;
+    }
+
+    public function scopedInstance(string $abstract, mixed $instance): self
+    {
+        $this->scopedInstances[$abstract] = $instance;
+
+        return $this;
+    }
+
+    public function resetScope(): void
+    {
+        $this->scopedInstances = [];
     }
 
     /**
@@ -137,25 +156,15 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
      */
     public function get(string $id): mixed
     {
+        if (array_key_exists($id, $this->scopedInstances)) {
+            return $this->scopedInstances[$id];
+        }
+
         if (array_key_exists($id, $this->instances)) {
             return $this->instances[$id];
         }
 
-        $binding = $this->bindings[$id] ?? null;
-        $class = $binding === null ? $this->instantiableClass($id) : null;
-
-        if ($binding === null && $class === null) {
-            throw EntryNotFoundException::forId($id);
-        }
-
-        // @mago-expect analysis:mixed-assignment -- an entry can be any value, which the caller narrows
-        $resolved = $this->resolve($id, $binding ?? $class, [], $this->get(...));
-
-        if ($binding?->shared === true) {
-            $this->instances[$id] = $resolved;
-        }
-
-        return $resolved;
+        return $this->resolveEntry($id);
     }
 
     /**
@@ -176,7 +185,7 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
         $class = $binding === null ? $this->instantiableClass($id) : null;
 
         if ($binding === null && $class === null) {
-            throw array_key_exists($id, $this->instances)
+            throw array_key_exists($id, $this->instances) || array_key_exists($id, $this->scopedInstances)
                 ? ResolutionException::notBuildable($id)
                 : EntryNotFoundException::forId($id);
         }
@@ -206,10 +215,49 @@ final class Container implements ContainerInterface, ContainerConfigurator, Inst
     public function has(string $id): bool
     {
         return (
-            array_key_exists($id, $this->instances)
+            array_key_exists($id, $this->scopedInstances)
+            || array_key_exists($id, $this->instances)
             || array_key_exists($id, $this->bindings)
             || $this->instantiableClass($id) !== null
         );
+    }
+
+    /**
+     * @param string|Closure(ContainerInterface, array<string, mixed>): mixed|null $concrete
+     */
+    private function register(string $abstract, string|Closure|null $concrete, Lifetime $lifetime): self
+    {
+        $this->bindings[$abstract] = new Binding(concrete: $concrete ?? $abstract, lifetime: $lifetime);
+
+        unset($this->instances[$abstract], $this->scopedInstances[$abstract]);
+
+        return $this;
+    }
+
+    /**
+     * @throws EntryNotFoundException
+     * @throws CircularDependencyException
+     * @throws ResolutionException
+     */
+    private function resolveEntry(string $id): mixed
+    {
+        $binding = $this->bindings[$id] ?? null;
+        $class = $binding === null ? $this->instantiableClass($id) : null;
+
+        if ($binding === null && $class === null) {
+            throw EntryNotFoundException::forId($id);
+        }
+
+        // @mago-expect analysis:mixed-assignment -- an entry can be any value, which the caller narrows
+        $resolved = $this->resolve($id, $binding ?? $class, [], $this->get(...));
+
+        match ($binding?->lifetime) {
+            Lifetime::Shared => $this->instances[$id] = $resolved,
+            Lifetime::Scoped => $this->scopedInstances[$id] = $resolved,
+            default => null,
+        };
+
+        return $resolved;
     }
 
     /**

@@ -14,8 +14,8 @@ The container resolves an entry from one of three sources, checked in this order
 
 | Source | Registered with | Resolves to |
 | --- | --- | --- |
-| Instance | `instance()` | The value that was registered, every time. |
-| Binding | `bind()` or `singleton()` | A factory's result, another entry, or a class, built on each request or once. |
+| Instance | `instance()` or `scopedInstance()` | The value that was registered, every time, or until the scope is reset. |
+| Binding | `bind()`, `singleton()`, or `scoped()` | A factory's result, another entry, or a class, built on each request, once, or once per scope. |
 | Autowiring | Nothing | Any instantiable class, built with its constructor dependencies resolved from the container. |
 
 ```php

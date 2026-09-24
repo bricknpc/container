@@ -17,7 +17,8 @@ A new container already holds itself under `Container::class`, `Psr\Container\Co
 in [depend on the interfaces](#depend-on-the-interfaces), so a class that needs the container can ask for it in its
 constructor.
 
-The registration methods, `bind()`, `singleton()`, and `instance()`, return the container, so calls can be chained.
+The registration methods, `bind()`, `singleton()`, `scoped()`, and `instance()`, return the container, so calls can be
+chained.
 
 ## Depend on the interfaces
 
@@ -26,9 +27,10 @@ The container implements one interface for each part of its work:
 | Interface | Methods | Use it for |
 | --- | --- | --- |
 | `Psr\Container\ContainerInterface` | `get()`, `has()` | Resolving entries. |
-| `Dirthara\Container\Contract\ContainerConfigurator` | `bind()`, `singleton()`, `instance()`, `when()` | Registering entries and [contextual bindings](contextual-bindings.md). |
+| `Dirthara\Container\Contract\ContainerConfigurator` | `bind()`, `singleton()`, `scoped()`, `instance()`, `when()` | Registering entries and [contextual bindings](contextual-bindings.md). |
 | `Dirthara\Container\Contract\InstanceFactory` | `make()` | [Building a new instance](making-and-calling.md#make-a-new-instance) with some constructor parameters given. |
 | `Dirthara\Container\Contract\Invoker` | `call()` | [Calling a method or a closure](making-and-calling.md#call-a-method-or-a-closure) with its parameters filled in. |
+| `Dirthara\Container\Contract\Scope` | `scopedInstance()`, `resetScope()` | Providing per-request values and [ending a scope](#scope-an-entry). |
 
 Type against the interface that matches what the code does, rather than against `Container`:
 
@@ -134,10 +136,53 @@ Only the entry that was registered as a singleton is shared. After
 `$container->singleton(LoggerInterface::class, FileLogger::class)`, every `LoggerInterface` is the same object, but a
 `get(FileLogger::class)` still builds a new one, because `FileLogger` itself is not shared.
 
+## Scope an entry
+
+A long-running process, such as a worker that handles many requests, needs entries that are shared while one request is
+handled and built again for the next. `scoped()` takes the same arguments as `bind()` and shares the entry like
+`singleton()` does, until `resetScope()` ends the scope:
+
+```php
+$container->scoped(UnitOfWork::class);
+
+$container->get(UnitOfWork::class) === $container->get(UnitOfWork::class); // true
+
+$container->resetScope();
+$container->get(UnitOfWork::class); // a new UnitOfWork
+```
+
+A value that is created outside the container, such as the request itself, goes in with `scopedInstance()`:
+
+```php
+use Dirthara\Container\Contract\Scope;
+
+function handle(Scope $scope, Request $request): void
+{
+    $scope->scopedInstance(Request::class, $request);
+
+    try {
+        // handle the request
+    } finally {
+        $scope->resetScope();
+    }
+}
+```
+
+`resetScope()` forgets every scoped instance and every value a `scoped()` entry built. Singletons, instances, and
+bindings stay as they are. A scoped instance takes precedence over whatever is registered for the identifier, and does
+not replace it: after `resetScope()`, a binding or an instance for the same identifier applies again.
+
+:::caution
+A singleton that depends on a scoped entry receives it once, when the singleton is built, and keeps it after the scope
+ends. Make everything that depends on a scoped entry scoped as well, or give it the container and resolve the entry
+when it is needed.
+:::
+
 ## Replace an entry
 
-Registering an identifier again replaces what was there. `bind()` and `singleton()` discard a registered instance and
-any value a singleton already built, and `instance()` discards a binding.
+Registering an identifier again replaces what was there. `bind()`, `singleton()`, and `scoped()` discard a registered
+instance, a scoped instance, and any value the entry already built, and `instance()` discards a binding and a scoped
+instance.
 
 ```php
 $container->singleton(Clock::class, SystemClock::class);

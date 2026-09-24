@@ -17,6 +17,6 @@ final readonly class Binding
      */
     public function __construct(
         public string|Closure $concrete,
-        public bool $shared,
+        public Lifetime $lifetime,
     ) {}
 }

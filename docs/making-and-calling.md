@@ -29,6 +29,8 @@ Where `get()` returns what the container already holds, `make()` never does:
 | Nothing, an instantiable class | A new instance | A new instance |
 | `bind()` | A new instance | A new instance |
 | `singleton()` | The shared instance | A new instance, which is not kept and does not replace the shared one |
+| `scoped()` | The instance shared in the current scope | A new instance, which is not kept and does not replace the scoped one |
+| `scopedInstance()` | The registered value, until the scope is reset | A new instance from the identifier's binding or class, or a `ResolutionException` when it has neither |
 | `instance()`, with a class name | The registered value | A new instance of the class |
 | `instance()`, with any other identifier | The registered value | A `ResolutionException`, because there is nothing to build |
 
