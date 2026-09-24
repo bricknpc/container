@@ -7,7 +7,8 @@ description: A PSR-11 dependency injection container with autowiring for the Dir
 
 Dirthara Container is a dependency injection container that implements the
 [PSR-11](https://www.php-fig.org/psr/psr-11/) `ContainerInterface`. Any library that accepts a PSR-11 container can use
-it, and code written against the interface can swap it for another implementation.
+it, and code written against the interface can swap it for another implementation. Registering entries has an
+interface of its own, `ContainerConfigurator`; see [depending on the interfaces](getting-started.md#depend-on-the-interfaces).
 
 The container resolves an entry from one of three sources, checked in this order:
 

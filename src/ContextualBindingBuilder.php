@@ -5,28 +5,38 @@ declare(strict_types=1);
 namespace Dirthara\Container;
 
 use Closure;
+use Dirthara\Container\Contract\ContainerConfigurator;
 use Dirthara\Container\Exception\InvalidContextualBindingException;
+use Dirthara\Container\Contract\ContextualBindingBuilder as ContextualBindingBuilderContract;
 
 use function preg_match;
 use function class_exists;
 use function interface_exists;
 
-final readonly class ContextualBindingBuilder
+/**
+ * @template-covariant TConfigurator of ContainerConfigurator
+ *
+ * @implements ContextualBindingBuilderContract<TConfigurator>
+ */
+final readonly class ContextualBindingBuilder implements ContextualBindingBuilderContract
 {
     /**
      * @internal
      *
+     * @param TConfigurator $configurator
      * @param list<class-string> $classes
      * @param Closure(list<class-string>, ContextualBinding): void $register
      */
     public function __construct(
-        private Container $container,
+        private ContainerConfigurator $configurator,
         private array $classes,
         private Closure $register,
     ) {}
 
     /**
-     * @return PendingContextualBinding
+     * @throws InvalidContextualBindingException
+     *
+     * @return PendingContextualBinding<TConfigurator>
      */
     public function needs(string $need): PendingContextualBinding
     {
@@ -36,6 +46,6 @@ final readonly class ContextualBindingBuilder
             throw InvalidContextualBindingException::invalidNeed($need);
         }
 
-        return new PendingContextualBinding($this->container, $this->classes, $need, $this->register);
+        return new PendingContextualBinding($this->configurator, $this->classes, $need, $this->register);
     }
 }

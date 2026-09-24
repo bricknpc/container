@@ -13,10 +13,48 @@ use Dirthara\Container\Container;
 $container = new Container();
 ```
 
-A new container already holds itself under `Container::class` and `Psr\Container\ContainerInterface`, so a class that
-needs the container can ask for it in its constructor.
+A new container already holds itself under `Container::class`, `Psr\Container\ContainerInterface`, and
+`Dirthara\Container\Contract\ContainerConfigurator`, so a class that needs the container can ask for it in its
+constructor.
 
 The registration methods, `bind()`, `singleton()`, and `instance()`, return the container, so calls can be chained.
+
+## Depend on the interfaces
+
+The container implements two interfaces, one for each side of its work:
+
+| Interface | Methods | Use it for |
+| --- | --- | --- |
+| `Psr\Container\ContainerInterface` | `get()`, `has()` | Resolving entries. |
+| `Dirthara\Container\Contract\ContainerConfigurator` | `bind()`, `singleton()`, `instance()`, `when()` | Registering entries and [contextual bindings](contextual-bindings.md). |
+
+Type against the interface that matches what the code does, rather than against `Container`:
+
+```php
+use Dirthara\Container\Contract\ContainerConfigurator;
+
+final readonly class MailServices
+{
+    public function register(ContainerConfigurator $configurator): void
+    {
+        $configurator
+            ->singleton(TransportInterface::class, SmtpTransport::class)
+            ->when(Mailer::class)
+            ->needs('$retries')
+            ->giveValue(5);
+    }
+}
+```
+
+Through `ContainerConfigurator`, a contextual binding is typed against interfaces in the same namespace as well:
+`when()` returns a `Contract\ContextualBindingBuilder`, its `needs()` a `Contract\PendingContextualBinding`, and
+`give()` and `giveValue()` a `ContainerConfigurator` again, as do the registration methods. A chain of registrations
+never reaches a concrete class.
+
+:::note
+Neither interface extends the other. Code that both registers and resolves entries needs both, and `make()` and
+`call()` are only on `Container`.
+:::
 
 ## Resolve an entry
 

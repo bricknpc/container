@@ -16,6 +16,7 @@ use ReflectionFunctionAbstract;
 use Psr\Container\ContainerInterface;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
+use Dirthara\Container\Contract\ContainerConfigurator;
 use Dirthara\Container\Exception\EntryNotFoundException;
 use Dirthara\Container\Exception\InvalidCallableException;
 use Dirthara\Container\Exception\CircularDependencyException;
@@ -37,7 +38,7 @@ use function array_diff_key;
 use function function_exists;
 use function array_key_exists;
 
-final class Container implements ContainerInterface
+final class Container implements ContainerInterface, ContainerConfigurator
 {
     /**
      * @var array<string, Binding>
@@ -63,6 +64,7 @@ final class Container implements ContainerInterface
     {
         $this->instances[self::class] = $this;
         $this->instances[ContainerInterface::class] = $this;
+        $this->instances[ContainerConfigurator::class] = $this;
     }
 
     /**
@@ -102,6 +104,8 @@ final class Container implements ContainerInterface
      * @param class-string|list<class-string> $classes
      *
      * @throws InvalidContextualBindingException
+     *
+     * @return ContextualBindingBuilder<self>
      */
     public function when(string|array $classes): ContextualBindingBuilder
     {

@@ -6,17 +6,25 @@ namespace Dirthara\Container;
 
 use Closure;
 use Psr\Container\ContainerInterface;
+use Dirthara\Container\Contract\ContainerConfigurator;
+use Dirthara\Container\Contract\PendingContextualBinding as PendingContextualBindingContract;
 
-final readonly class PendingContextualBinding
+/**
+ * @template-covariant TConfigurator of ContainerConfigurator
+ *
+ * @implements PendingContextualBindingContract<TConfigurator>
+ */
+final readonly class PendingContextualBinding implements PendingContextualBindingContract
 {
     /**
      * @internal
      *
+     * @param TConfigurator $configurator
      * @param list<class-string> $classes
      * @param Closure(list<class-string>, ContextualBinding): void $register
      */
     public function __construct(
-        private Container $container,
+        private ContainerConfigurator $configurator,
         private array $classes,
         private string $need,
         private Closure $register,
@@ -24,18 +32,23 @@ final readonly class PendingContextualBinding
 
     /**
      * @param string|Closure(ContainerInterface): mixed $concrete
+     *
+     * @return TConfigurator
      */
-    public function give(string|Closure $concrete): Container
+    public function give(string|Closure $concrete): ContainerConfigurator
     {
         ($this->register)($this->classes, new ContextualBinding(need: $this->need, concrete: $concrete));
 
-        return $this->container;
+        return $this->configurator;
     }
 
-    public function giveValue(mixed $value): Container
+    /**
+     * @return TConfigurator
+     */
+    public function giveValue(mixed $value): ContainerConfigurator
     {
         ($this->register)($this->classes, new ContextualBinding(need: $this->need, concrete: null, value: $value));
 
-        return $this->container;
+        return $this->configurator;
     }
 }

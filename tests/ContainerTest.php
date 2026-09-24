@@ -32,6 +32,7 @@ use Dirthara\Container\Tests\Fixtures\NeedsService;
 use Dirthara\Container\Exception\ContainerException;
 use Dirthara\Container\Exception\ResolutionException;
 use Dirthara\Container\Tests\Fixtures\RequiresNumber;
+use Dirthara\Container\Contract\ContainerConfigurator;
 use Dirthara\Container\Tests\Fixtures\AbstractService;
 use Dirthara\Container\Tests\Fixtures\NullableService;
 use Dirthara\Container\Tests\Fixtures\OptionalService;
@@ -52,6 +53,28 @@ final class ContainerTest extends TestCase
 
         self::assertSame($container, $container->get(Container::class));
         self::assertSame($container, $container->get(ContainerInterface::class));
+        self::assertSame($container, $container->get(ContainerConfigurator::class));
+    }
+
+    #[Test]
+    public function it_registers_entries_through_the_configurator_interface(): void
+    {
+        $container = new Container();
+        $configurator = $container->get(ContainerConfigurator::class);
+
+        $returned = $configurator
+            ->bind(Service::class, ServiceImplementation::class)
+            ->singleton('shared', Plain::class)
+            ->instance('config', ['debug' => true])
+            ->when(NeedsService::class)
+            ->needs(Service::class)
+            ->give(OtherServiceImplementation::class);
+
+        self::assertSame($container, $returned);
+        self::assertInstanceOf(ServiceImplementation::class, $container->get(Service::class));
+        self::assertSame($container->get('shared'), $container->get('shared'));
+        self::assertSame(['debug' => true], $container->get('config'));
+        self::assertInstanceOf(OtherServiceImplementation::class, $container->get(NeedsService::class)->service);
     }
 
     #[Test]

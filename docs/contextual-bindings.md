@@ -21,7 +21,8 @@ $container->when(Mailer::class)
 A `Mailer` receives a `MailLogger`. Every other class that asks for a `LoggerInterface` still receives a `FileLogger`,
 and `$container->get(LoggerInterface::class)` is unaffected too.
 
-`give()` and `giveValue()` return the container, so a contextual binding can be chained with other registrations.
+`give()` and `giveValue()` return the container `when()` was called on, typed as a `Container` or a
+`ContainerConfigurator` to match, so a contextual binding can be chained with other registrations.
 
 ## What a class can need
 
