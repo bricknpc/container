@@ -98,6 +98,7 @@ final class ContainerTest extends TestCase
     public function it_lets_a_bound_factory_make_instances_through_the_instance_factory(): void
     {
         $container = new Container()->bind('number', static function (ContainerInterface $container): RequiresNumber {
+            // @mago-expect analysis:mixed-assignment -- PSR-11 declares get() to return mixed, which the assertion narrows
             $factory = $container->get(InstanceFactory::class);
             self::assertInstanceOf(InstanceFactory::class, $factory);
 
